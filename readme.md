@@ -6,37 +6,26 @@ FamilyTree4 项目说明（简明版）
 - 推荐发布到 GitHub Pages（main/docs）。
 
 站点管理脚本（PowerShell）
-- 脚本：scripts/site_manage.ps1（推荐使用，整合构建/复制/打包）
-- 常用子命令：
-  - release [zipName] [relative|absolute|docs]：一键发布（clean + build + package），默认 PathMode=relative，zipName 可省略（自动 site_YYYYMMDD_HHmm.zip）。
-  - build [relative|absolute|docs]：全站构建（默认 PathMode=docs），复制基础资源、成员数据、树模块，生成并复制 Hexo 页面，修补 iframe。
-  - clean：清理 docs/ 与 hexo_site/public、db.json。
-  - stories：仅生成 Hexo（npx hexo generate）。
-  - basic：复制 index/css/精选lib/fonts 到 docs。（lib 仅包含站点必需文件：familytree.js、tailwindcss.min.js、font-awesome.min.css）docs/。
-  - members：复制 Data 与 js/members_db.js 到 docs/。
-  - tree：复制 js/app.js 到 docs/。
-  - prepare：仅复制 Hexo 输出到 docs/hexo_site/public，并创建 .nojekyll（不复制其它模块）。
-  - package [zipName]：打包 docs/ 为 zip（默认 site_YYYYMMDD_HHmm.zip）。
-  - profile <组合> [relative|absolute|docs]：按组合构建，支持：
-    members+tree、basic+members+tree、stories+basic、basic+members、members+stories、basic+stories+tree、all。
-- PathMode 说明：
-  - relative（推荐）：iframe 指向 hexo_site/public/index.html（相对路径），适合离线 file:// 访问与 GitHub Pages。
-  - absolute：iframe 指向 /hexo_site/public/index.html（绝对路径）。
-  - docs：iframe 指向 /docs/index.html（主要用于本地预览；GitHub Pages 根为 docs/ 内容，远端不建议）。
+- 脚本：scripts/global_manage.ps1（推荐使用，整合清理/构建/推送功能）
+- 支持的命令：
+  - clean：清理项目文件（删除docs目录、Hexo数据库和生成文件）
+  - build：构建整个项目（生成Hexo内容，复制所有必要文件到docs目录）
+  - push：提交并推送到GitHub（自动处理git仓库和远程配置）
+- 环境变量：
+  - FT4_REMOTE：自定义Git远程仓库名称（默认：origin）
+  - FT4_BRANCH：自定义Git分支名称（默认：main）
 
 常用工作流示例
-- 一键发布（默认 relative，生成 zip 包到项目根）：
-  .\scripts\site_manage.ps1 release
-  .\scripts\site_manage.ps1 release site_package.zip relative
-- 全站构建（默认 docs）：
-  .\scripts\site_manage.ps1 build
-- 组合构建（全量与路径模式）：
-  .\scripts\site_manage.ps1 profile all docs
-  .\scripts\site_manage.ps1 profile all relative
-- 仅准备 Hexo 输出：
-  .\scripts\site_manage.ps1 prepare
-- 打包发布产物：
-  .\scripts\site_manage.ps1 package
+- 清理项目：
+  .\scripts\global_manage.ps1 clean
+- 构建项目：
+  .\scripts\global_manage.ps1 build
+- 发布到GitHub：
+  .\scripts\global_manage.ps1 push
+- 完整工作流（清理、构建、推送）：
+  .\scripts\global_manage.ps1 clean
+  .\scripts\global_manage.ps1 build
+  .\scripts\global_manage.ps1 push
 
 本地预览与离线访问
 - 本地 HTTP 预览（推荐）：
@@ -67,10 +56,9 @@ GitHub Pages（main/docs）
 
 GitHub Pages 部署步骤（详细）
 1) 构建站点（推荐在本地预览通过后再发布）
-   - 全量构建并设定路径模式（推荐 relative 或 absolute）：
-     .\scripts\site_manage.ps1 profile all relative
-     或
-     .\scripts\site_manage.ps1 build relative
+   - 清理并构建站点：
+     .\scripts\global_manage.ps1 clean
+     .\scripts\global_manage.ps1 build
    - 本地预览（仅保留一个 8000 端口服务）：
      python -m http.server 8000
      打开 http://localhost:8000/docs/index.html 验证页面与 iframe 加载。

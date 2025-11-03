@@ -1267,6 +1267,8 @@ function renderStories(){
     hexoFrame.className = 'w-full border rounded-xl';
     hexoFrame.loading = 'lazy';
     hexoFrame.style.width = '100%';
+    // 修改sandbox属性配置，添加更多必要权限
+    hexoFrame.sandbox = 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox';
     // 视口自适应高度（移动端兜底最小高度）
     var setFrameHeight = function(){
       try{
