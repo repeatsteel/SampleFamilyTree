@@ -1,0 +1,2424 @@
+<!--
+  DB 配置工具页（仅用于开发/数据管理）
+  - 依赖：lib/jquery-3.6.0.min.js、js/members_db.js
+  - 注意：此页面不参与打包；构建脚本不会将 jQuery 等库拷贝到 docs/
+-->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>家族配置后台管理</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="../lib/tailwindcss.min.js"></script>
+    <link rel="stylesheet" href="../lib/font-awesome.min.css">
+    <link rel="stylesheet" href="../css/fa-local.css">
+  <style>
+    body{font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; padding: 20px; background:#fafafa;}
+    h1{font-size: 20px; margin: 0 0 16px;}
+    h2{font-size: 18px; margin: 24px 0 8px;}
+    .card{background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin-bottom:16px;}
+    table{width:100%; border-collapse:separate; border-spacing:0;}
+    th,td{border:1px solid #e5e7eb; padding:8px; text-align:left;}
+    th{background:#f3f4f6;}
+    input[type="text"], input[type="number"], textarea{width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid #d1d5db; border-radius:4px;}
+    .btn{display:inline-block; padding:6px 12px; border-radius:6px; border:1px solid #d1d5db; background:#fff; cursor:pointer;}
+    .btn-primary{background:#2563eb; color:#fff; border-color:#1d4ed8;}
+    .btn-danger{background:#ef4444; color:#fff; border-color:#dc2626;}
+    /* 当两个按钮相邻时，给第二个按钮左边加 8px 间距，避免按钮贴在一起 */
+    .btn + .btn{margin-left:8px;}
+    .flex{display:flex; align-items:center; gap:8px;}
+    .muted{color:#6b7280;}
+    .error{color:#b91c1c;}
+    .success{color:#166534;}
+    .footer{margin-top:24px; font-size:12px; color:#6b7280;}
+    .cols{display:grid; grid-template-columns:1fr; gap:16px;}
+    .table-wrap{overflow:auto; max-width:100%;}
+    #membersTable thead th{position:sticky; top:0; z-index:7; box-shadow: inset 0 -1px #e5e7eb;}
+    #membersTable{table-layout:fixed;}
+    #membersTable{table-layout:fixed; --editW:60px; --col1:150px; --col2:100px; --col3:100px;}
+/* 锁定前四列：编辑 / member_uuid / member_id / 姓名 */
+#membersTable th:nth-child(1), #membersTable td:nth-child(1){position:sticky; left:0; background:#fff; z-index:5; box-shadow: 1px 0 0 #e5e7eb;}
+#membersTable th:nth-child(2), #membersTable td:nth-child(2){position:sticky; left:var(--editW); background:#fff; z-index:5; box-shadow: 1px 0 0 #e5e7eb;}
+#membersTable th:nth-child(3), #membersTable td:nth-child(3){position:sticky; left:calc(var(--editW) + var(--col1)); background:#fff; z-index:5; box-shadow: 1px 0 0 #e5e7eb;}
+#membersTable th:nth-child(4), #membersTable td:nth-child(4){position:sticky; left:calc(var(--editW) + var(--col1) + var(--col2)); background:#fff; z-index:5; box-shadow: 1px 0 0 #e5e7eb;}
+/* 提升锁定列表头的层级，避免横向滚动时被覆盖 */
+#membersTable thead th:nth-child(1),
+#membersTable thead th:nth-child(2),
+#membersTable thead th:nth-child(3),
+#membersTable thead th:nth-child(4){ z-index: 9; }
+    #membersTable tbody tr:nth-child(even){background:#fafafa;}
+    #membersTable tbody tr:hover{background:#fffbe6;}
+    #membersTable th.sortable{cursor:pointer; user-select:none;}
+    #membersTable th.sort-asc::after{content:" \2191";}
+    #membersTable th.sort-desc::after{content:" \2193";}
+    #membersControls{display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;}
+    #membersControls .spacer{flex:1;}
+    #membersControls label{display:flex; align-items:center; gap:6px;}
+    /* 紧凑模式：隐藏父/母/配偶列（第8/9/10列） */
+    #membersTable.compact th:nth-child(8), #membersTable.compact td:nth-child(8),
+      #membersTable.compact th:nth-child(9), #membersTable.compact td:nth-child(9),
+      #membersTable.compact th:nth-child(10), #membersTable.compact td:nth-child(10){display:none;}
+      /* 行悬浮操作浮层与图标按钮 */
+      .row-actions{opacity:1; transition:opacity .15s ease-in-out;}
+      .action-icon{display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border:1px solid #d1d5db; border-radius:6px; background:#f9fafb; color:#374151; opacity:.85; transition: opacity .15s ease-in-out, transform .05s;}
+      .action-icon:hover{background:#e5e7eb; opacity:1;}
+      .action-icon:active{transform:scale(0.96);}
+      /* 行保存高亮反馈 */
+      .row-flash{ background:#f0fdf4; box-shadow:0 0 0 2px rgba(34,197,94,.35) inset; transition: background .6s ease-in-out, box-shadow .6s ease-in-out; }
+      /* 引导气泡 */
+      .help-bubble{position:absolute; z-index:50; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:8px 10px; box-shadow:0 8px 24px rgba(0,0,0,.08); font-size:12px; color:#374151; max-width:240px;}
+      /* 编辑弹层置顶，避免被表格粘性头覆盖 */
+      #memberEditorOverlay{z-index:9999;}
+      #memberEditorOverlay .card{position:relative; z-index:10000;}
+  </style>
+</head>
+<body>
+  <h1 class="text-2xl font-semibold text-gray-800 mb-4">家族配置后台管理</h1>
+  <div class="card shadow-sm">
+    <div class="flex flex-wrap items-center gap-3">
+      <button class="btn" id="exportFamilyJSBtn"><i class="fa fa-code mr-1"></i> 导出 FamilyDB</button>
+      <label class="btn" for="importFamilyJSFile"><i class="fa fa-upload mr-1"></i> 导入 FamilyDB</label>
+      <input type="file" id="importFamilyJSFile" accept=".js,.json,application/json,text/javascript" style="display:none;">
+      <button class="btn btn-danger bg-red-600 text-white hover:bg-red-700 border-red-600" id="clearDBBtn"><i class="fa fa-trash mr-1"></i> 清空数据</button>
+      <span style="flex-basis:100%"></span>
+      <button class="btn" id="loadAllStoresBtn"><i class="fa fa-refresh mr-1"></i> 从四个数据库中加载</button>
+      <span id="status" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="cols grid grid-cols-1 gap-6">
+    <div class="card shadow-sm">
+      <h2 class="text-lg font-medium text-gray-700 mb-2">家族信息（family）与管理团队（management）</h2>
+      <div class="grid grid-cols-2 gap-3">
+        <label>姓氏
+          <input id="family_surname" type="text" class="rounded border border-gray-300 p-2" placeholder="如：张">
+        </label>
+        <label>籍贯/源流
+          <input id="family_origin" type="text" class="rounded border border-gray-300 p-2" placeholder="如：中国">
+        </label>
+        <label>创始年份
+          <input id="family_foundingYear" type="text" class="rounded border border-gray-300 p-2" placeholder="如：未知或具体年份">
+        </label>
+        <label class="col-span-2">家族描述
+          <textarea id="family_description" rows="2" class="w-full rounded border border-gray-300 p-2" placeholder="家族简介或说明"></textarea>
+        </label>
+        <label>管理状态
+          <select id="management_status" class="rounded border border-gray-300 p-2">
+            <option value="enable">启用</option>
+            <option value="disable">停用</option>
+          </select>
+        </label>
+        <label class="col-span-2">管理描述
+          <textarea id="management_description" rows="2" class="w-full rounded border border-gray-300 p-2" placeholder="管理团队说明"></textarea>
+        </label>
+        <label>公开联系方式（微信）
+          <input id="management_contact_wechat" type="text" class="rounded border border-gray-300 p-2" placeholder="可选">
+        </label>
+        <label>公开联系方式（邮箱）
+          <input id="management_contact_email" type="email" class="rounded border border-gray-300 p-2" placeholder="可选">
+        </label>
+        <!-- 管理团队职位列表（positions） -->
+        <div class="col-span-2 mt-3">
+          <h3 class="text-md font-medium text-gray-700 mb-2">管理团队职位列表（positions）</h3>
+          <table id="positionsTable" class="min-w-full text-sm">
+            <thead>
+              <tr>
+                <th style="width:160px">职位名称（title）</th>
+                <th style="width:180px">负责人（name）</th>
+                <th style="width:200px">联系方式（contact）</th>
+                <th>备注（note）</th>
+                <th style="width:90px">操作</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="mt-2">
+            <button class="btn bg-blue-600 text-white hover:bg-blue-700 border-blue-600" id="addPositionBtn"><i class="fa fa-plus mr-1"></i> 添加职位</button>
+          </div>
+        </div>
+      </div>
+      <div class="mt-2">
+        <button class="btn bg-green-600 text-white hover:bg-green-700 border-green-600" id="saveFamilyMgmtBtn"><i class="fa fa-save mr-1"></i> 保存家族/管理信息</button>
+        <span id="familyMgmtStatus" class="muted"></span>
+      </div>
+    </div>
+    <div class="card shadow-sm">
+      <h2 class="text-lg font-medium text-gray-700 mb-2">分支（branches）</h2>
+      <p class="muted">分支代号需为四位大写字母（唯一）。</p>
+      <table id="branchesTable" class="min-w-full text-sm">
+        <thead>
+          <tr>
+            <th class="bg-gray-50" style="width:140px">分支代号（id）</th>
+            <th class="bg-gray-50" style="width:180px">分支名称（name）</th>
+            <th class="bg-gray-50">描述（description）</th>
+            <th class="bg-gray-50" style="width:90px">操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="mt-2">
+        <button class="btn bg-blue-600 text-white hover:bg-blue-700 border-blue-600" id="addBranchBtn"><i class="fa fa-plus mr-1"></i> 添加分支</button>
+        <button class="btn bg-green-600 text-white hover:bg-green-700 border-green-600" id="saveBranchesBtn"><i class="fa fa-save mr-1"></i> 保存分支</button>
+        <div id="branchErrors" class="error mt-2"></div>
+      </div>
+    </div>
+    <div class="card shadow-sm">
+      <h2 class="text-lg font-medium text-gray-700 mb-2">世系与字辈（generationNames）</h2>
+      <p class="muted">一个世代可包含多个字辈，用中文逗号或英文逗号分隔。</p>
+      <table id="gensTable" class="min-w-full text-sm">
+        <thead>
+          <tr>
+            <th class="bg-gray-50" style="width:120px">世代（generation）</th>
+            <th class="bg-gray-50">字辈列表（names）</th>
+            <th class="bg-gray-50" style="width:90px">操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="mt-2">
+        <button class="btn bg-blue-600 text-white hover:bg-blue-700 border-blue-600" id="addGenBtn"><i class="fa fa-plus mr-1"></i> 添加世代</button>
+        <button class="btn bg-green-600 text-white hover:bg-green-700 border-green-600" id="saveGensBtn"><i class="fa fa-save mr-1"></i> 保存世系</button>
+        <div id="genErrors" class="error mt-2"></div>
+      </div>
+    </div>
+
+
+  </div>
+
+  <div class="card shadow-sm">
+    <h2 class="text-lg font-medium text-gray-700 mb-2">成员管理（members）</h2>
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+      <button class="btn" id="loadMembersBtn"><i class="fa fa-database mr-1"></i> 从数据库加载成员</button>
+      <button class="btn" id="validateMembersBtn"><i class="fa fa-check-circle mr-1"></i> 数据合法性校验</button>
+      <button class="btn" id="acceptFixesBtn" disabled><i class="fa fa-wrench mr-1"></i> 接受修复建议</button>
+      <button class="btn" id="addMemberBtn"><i class="fa fa-user-plus mr-1"></i> 添加成员行</button>
+      <span id="membersStatus" class="muted"></span>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+      <input type="text" id="memberFilterBranch" placeholder="分支代号（四位大写字母）" style="width:180px;">
+      <input type="text" id="memberFilterName" placeholder="姓名包含" style="width:160px;">
+      <input type="text" id="memberFilterId" placeholder="member_id 或 member_uuid 精确匹配" style="width:260px;">
+      <button class="btn" id="applyMemberFilters"><i class="fa fa-filter mr-1"></i> 应用过滤</button>
+      <button class="btn" id="clearMemberFilters"><i class="fa fa-times-circle mr-1"></i> 清除过滤</button>
+    </div>
+    <datalist id="branchOptions"></datalist>
+    <datalist id="uuidOptions"></datalist>
+    <div id="membersScrollTop" class="overflow-x-auto" style="height:16px; margin-bottom:4px;"><div id="membersScrollTopSpacer" style="height:1px;"></div></div>
+    <div id="membersTableWrap" class="table-wrap overflow-x-auto">
+    <table id="membersTable" class="min-w-full text-sm">
+      <colgroup>
+         <col style="width:60px">
+         <!-- 第一列宽度由CSS变量--col1控制，对应member_uuid列 -->
+         <col style="width:var(--col1)">
+         <col style="width:var(--col2)">
+         <col style="width:var(--col3)">
+         <col style="width:100px">
+         <col style="width:130px">
+         <col style="width:130px">
+         <col style="width:130px">
+         <col style="width:140px">
+         <col style="width:140px">
+         <col style="width:140px">
+         <col style="width:180px">
+         <col style="width:180px">
+         <col style="width:180px">
+         <col style="width:180px">
+         <col style="width:180px">
+         <col style="width:180px">
+         <col style="width:180px">
+         <col style="width:180px">
+         <col style="width:180px">
+         <col style="width:140px">
+       </colgroup>
+       <thead>
+         <tr>
+           <th style="width:60px">编辑</th>
+           <th style="width:var(--col1)">member_uuid</th>
+           <th style="width:var(--col2)" class="sortable" data-sort="member_id">member_id</th>
+           <th style="width:var(--col3)" class="sortable" data-sort="name">姓名</th>
+           <th style="width:100px">性别</th>
+           <th style="width:130px">出生</th>
+           <th style="width:130px">去世</th>
+           <th style="width:130px">职业</th>
+           <th style="width:140px">字辈(Zibei)</th>
+           <th style="width:140px" class="sortable" data-sort="generation">世代(自动)</th>
+           <th style="width:140px" class="sortable" data-sort="branch_char">分支代号</th>
+           <th style="width:180px">分支名称(自动)</th>
+           <th style="width:180px">父ID</th>
+           <th style="width:180px">母ID</th>
+           <th style="width:180px">配偶ID(双向)</th>
+           <th style="width:180px" class="nowrap-cell">子女IDs（逗号分隔）</th>
+           <th style="width:180px" class="nowrap-cell">照片路径(photo)</th>
+           <th style="width:180px" class="nowrap-cell">曾用名(previous_names)</th>
+           <th style="width:180px" class="nowrap-cell">简介(bio)</th>
+           <th style="width:180px">创建时间(自动)</th>
+           <th style="width:180px">更新时间(自动)</th>
+           <th style="width:140px">操作</th>
+         </tr>
+       </thead>
+       <tbody></tbody>
+     </table>
+    </div>
+    <div id="membersControls" class="flex items-center gap-2 mt-2 flex-wrap">
+    <button class="btn bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300" id="prevPageBtn"><i class="fa fa-chevron-left mr-1"></i> 上一页</button>
+    <button class="btn bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300" id="nextPageBtn"><i class="fa fa-chevron-right mr-1"></i> 下一页</button>
+    <span id="pageInfo" class="muted"></span>
+    <span class="spacer"></span>
+    <label>每页
+    <select id="membersPageSize" class="rounded border border-gray-300 p-1">
+    <option value="10">10</option>
+    <option value="20" selected>20</option>
+    <option value="50">50</option>
+    <option value="100">100</option>
+    </select>
+    条
+    </label>
+    <label class="inline-flex items-center gap-2"><input type="checkbox" id="compactMode"> 紧凑模式</label>
+
+    </div>
+    <div id="memberErrors" class="error mt-2"></div>
+<div id="memberErrorsSummary" class="muted mt-1"></div>
+    <div id="fixSuggestions" class="muted mt-2"></div>
+
+  </div>
+
+  <!-- 成员编辑二级卡片（弹层） -->
+  <div id="memberEditorOverlay" class="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center" style="display:none;">
+    <div class="card shadow-sm" style="width:720px; max-height:80vh; overflow:auto;">
+      <h2 class="text-lg font-medium text-gray-700 mb-2">编辑成员</h2>
+      <div class="grid grid-cols-2 gap-3">
+        <label>member_uuid
+          <input id="edit_member_uuid" type="text" class="rounded border border-gray-300 p-2 bg-gray-50" disabled>
+        </label>
+        <label>member_id
+          <input id="edit_member_id" type="text" class="rounded border border-gray-300 p-2 bg-gray-50" placeholder="自动生成（保存时）" disabled>
+        </label>
+        <label>姓名
+          <input id="edit_name" type="text" class="rounded border border-gray-300 p-2">
+        </label>
+        <label>性别
+          <select id="edit_gender" class="rounded border border-gray-300 p-2">
+            <option value="">请选择</option>
+            <option value="男">男</option>
+            <option value="女">女</option>
+          </select>
+        </label>
+        <label>出生日期
+          <input id="edit_birth_date" type="date" class="rounded border border-gray-300 p-2">
+        </label>
+        <label>去世日期
+          <input id="edit_death_date" type="date" class="rounded border border-gray-300 p-2">
+        </label>
+        <label>职业
+          <input id="edit_occupation" type="text" class="rounded border border-gray-300 p-2">
+        </label>
+        <label>字辈(Zibei)
+          <select id="edit_Zibei" class="rounded border border-gray-300 p-2"></select>
+        </label>
+        <label>分支代号
+          <select id="edit_branch_char" class="rounded border border-gray-300 p-2"></select>
+        </label>
+        <label>父ID
+          <div class="flex items-center gap-2">
+            <input id="edit_father_id" type="text" class="rounded border border-gray-300 p-2" list="uuidOptions" placeholder="父 member_uuid">
+            <button class="btn" id="selectFatherBtn"><i class="fa fa-user mr-1"></i> 选择</button>
+          </div>
+        </label>
+        <label>母ID
+          <div class="flex items-center gap-2">
+            <input id="edit_mother_id" type="text" class="rounded border border-gray-300 p-2" list="uuidOptions" placeholder="母 member_uuid">
+            <button class="btn" id="selectMotherBtn"><i class="fa fa-user mr-1"></i> 选择</button>
+          </div>
+        </label>
+        <label>配偶ID
+          <div class="flex items-center gap-2">
+            <input id="edit_spouse_id" type="text" class="rounded border border-gray-300 p-2" list="uuidOptions" placeholder="配偶 member_uuid">
+            <button class="btn" id="selectSpouseBtn"><i class="fa fa-heart mr-1"></i> 选择</button>
+          </div>
+        </label>
+        <label>子女IDs
+          <div class="flex items-center gap-2">
+            <input id="edit_child_id" type="text" class="rounded border border-gray-300 p-2" placeholder="USAZ123456,USAZ123457">
+            <button class="btn" id="selectChildrenBtn"><i class="fa fa-users mr-1"></i> 选择</button>
+          </div>
+        </label>
+        <label>照片
+          <input id="edit_photo" type="text" class="rounded border border-gray-300 p-2" placeholder="/imgs/path.jpg">
+        </label>
+        <label>曾用名
+          <input id="edit_previous_names" type="text" class="rounded border border-gray-300 p-2" placeholder="曾用名；分号或逗号分隔">
+        </label>
+        <label>简介(bio)
+          <textarea id="edit_bio" class="rounded border border-gray-300 p-2" rows="3" placeholder="简要生平、备注"></textarea>
+        </label>
+      </div>
+      <div id="memberEditorError" class="error mt-2"></div>
+      <div class="mt-3 flex items-center gap-2 justify-end">
+        <button class="btn" id="memberEditorCancelBtn">取消</button>
+        <button class="btn btn-primary" id="memberEditorSaveBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer text-gray-500 text-sm mt-6">使用说明：先从数据库加载配置，编辑后保存。导出/导入用于备份与迁移配置。</div>
+
+  <script src="../lib/jquery-3.6.0.min.js"></script>
+  <script src="../js/members_db.js"></script>
+  <script>
+    const idRegex = /^[A-Z]{4}$/;
+
+    function setStatus(text, type){
+      const el = document.getElementById('status');
+      const base = 'text-sm ml-2';
+      const typeCls = type === 'error' ? 'error' : (type === 'success' ? 'success' : 'muted');
+      el.className = `${base} ${typeCls}`;
+      el.textContent = text || '';
+    }
+
+    // ===== 成员管理辅助函数：建议、过滤、分页、渲染 =====
+    function setMembersStatus(text, type){
+      const el = document.getElementById('membersStatus');
+      if(!el) return;
+      const base = 'text-sm ml-2';
+      const typeCls = type === 'error' ? 'error' : (type === 'success' ? 'success' : 'muted');
+      el.className = `${base} ${typeCls}`;
+      el.textContent = text || '';
+    }
+
+    function renderBranches(branches){
+      const tbody = document.querySelector('#branchesTable tbody');
+      tbody.innerHTML = '';
+      (branches||[]).forEach((b, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input class="w-full rounded border border-gray-300 p-2" type="text" value="${(b.id||'').toString().toUpperCase()}" placeholder="四位大写字母"/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2" type="text" value="${b.name||''}" placeholder="分支名称"/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2" type="text" value="${b.description||''}" placeholder="描述"/></td>
+          <td><button class="btn-danger bg-red-600 text-white hover:bg-red-700 border-red-600" data-action="del"><i class="fa fa-trash mr-1"></i> 删除</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // 初始化父/母/子女提示框：监听输入并显示分支/字辈/姓名
+    function initRelationHints(scope){
+      const root = scope || document;
+      const inputs = root.querySelectorAll('input[data-rel]');
+      inputs.forEach(inp => {
+        const handler = () => updateRelHint(inp);
+        inp.addEventListener('input', handler);
+        inp.addEventListener('change', handler);
+        // 初始填充
+        updateRelHint(inp);
+      });
+    }
+
+    async function updateRelHint(inputEl){
+      try{
+        const type = inputEl.dataset.rel;
+        const td = inputEl.closest('td');
+        const hintEl = td && td.querySelector('.rel-hint');
+        if(!hintEl){ return; }
+        const raw = (inputEl.value||'').trim();
+        if(!raw){ hintEl.textContent = ''; return; }
+        const getByUUID = MembersDB.getMemberByUUID;
+        const formatOne = (m) => {
+          if(!m) return '';
+          const branchChar = (m.branch_char||'').toString().toUpperCase();
+          const branchName = MembersDB?.CONFIG?.branchCharToNameMap?.[branchChar] || m.branch_name || '';
+          const Zibei = m.Zibei || m.zibei || '';
+          const nm = m.name || '';
+          return `分支：${branchName||branchChar||''} 字辈：${Zibei||''} 姓名：${nm}`;
+        };
+        if(type === 'child'){
+          const ids = raw.split(/[,，;；\s]+/).filter(Boolean);
+          const arr = await Promise.all(ids.map(u=>getByUUID(u)));
+          const parts = arr.filter(Boolean).map(formatOne).filter(Boolean);
+          hintEl.textContent = parts.length ? parts.join('；') : '未找到子女信息';
+        } else if(type === 'father' || type === 'mother'){
+          const m = await getByUUID(raw);
+          hintEl.textContent = m ? formatOne(m) : (type==='father'?'未找到父亲信息':'未找到母亲信息');
+        } else {
+          // 其他类型暂不处理
+          hintEl.textContent = '';
+        }
+      }catch(err){
+        console.debug('relation hint error:', err);
+      }
+    }
+
+    function renderGenerations(gens){
+      const tbody = document.querySelector('#gensTable tbody');
+      tbody.innerHTML = '';
+      (gens||[]).forEach((g)=>{
+        const namesStr = (g.names||[]).join('，');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input class="w-full rounded border border-gray-300 p-2" type="number" min="1" step="1" value="${Number(g.generation)||''}" placeholder="整数"/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2" type="text" value="${namesStr}" placeholder="字辈，逗号分隔"/></td>
+          <td><button class="btn-danger bg-red-600 text-white hover:bg-red-700 border-red-600" data-action="del"><i class="fa fa-trash mr-1"></i> 删除</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function collectBranches(){
+      const rows = document.querySelectorAll('#branchesTable tbody tr');
+      const out = [];
+      rows.forEach(r => {
+        const id = r.children[0].querySelector('input').value.trim().toUpperCase();
+        const name = r.children[1].querySelector('input').value.trim();
+        const description = r.children[2].querySelector('input').value.trim();
+        if(id || name || description){
+          out.push({ id, name, description });
+        }
+      });
+      return out;
+    }
+
+    function collectGenerations(){
+      const rows = document.querySelectorAll('#gensTable tbody tr');
+      const out = [];
+      rows.forEach(r => {
+        const gen = Number(r.children[0].querySelector('input').value);
+        const namesRaw = r.children[1].querySelector('input').value.trim();
+        const names = namesRaw ? namesRaw.replace(/,/g,'，').split('，').map(s => s.trim()).filter(Boolean) : [];
+        if(gen || names.length){ out.push({ generation: gen, names }); }
+      });
+      return out;
+    }
+
+    function validateBranches(list){
+      const errors = [];
+      const seen = new Set();
+      list.forEach((b, i) => {
+        if(!b.id || !idRegex.test(b.id)) errors.push(`第${i+1}行：分支代号需为四位大写字母`);
+        if(seen.has(b.id)) errors.push(`第${i+1}行：分支代号重复（${b.id}）`);
+        seen.add(b.id);
+        if(!b.name) errors.push(`第${i+1}行：分支名称为必填`);
+      });
+      return errors;
+    }
+
+    function validateGenerations(list){
+      const errors = [];
+      list.forEach((g, i) => {
+        if(!g.generation || !Number.isInteger(g.generation) || g.generation < 1){ errors.push(`第${i+1}行：世代需为正整数`); }
+        if(!Array.isArray(g.names) || g.names.length === 0){ errors.push(`第${i+1}行：至少填写一个字辈`); }
+      });
+      return errors;
+    }
+
+    function populateBranchOptions(branches){
+      const dl = document.getElementById('branchOptions');
+      if(!dl) return;
+      dl.innerHTML = '';
+      (branches||[]).forEach(b=>{
+        if(b && b.id){
+          const o = document.createElement('option');
+          o.value = String(b.id).toUpperCase();
+          dl.appendChild(o);
+        }
+      });
+    }
+
+    function populateUUIDOptions(list){
+      const dl = document.getElementById('uuidOptions');
+      if(!dl) return;
+      dl.innerHTML = '';
+      (list||[]).forEach(m=>{
+        const u = m && m.member_uuid;
+        if(u){
+          const o = document.createElement('option');
+          o.value = u;
+          o.label = m.name ? `${m.name}` : `${u}`;
+          o.textContent = m.name ? `${m.name}（${u}）` : `${u}`;
+          dl.appendChild(o);
+        }
+      });
+    }
+
+    function getCurrentFilters(){
+      const branch = document.getElementById('memberFilterBranch')?.value?.trim()?.toUpperCase() || '';
+      const name = document.getElementById('memberFilterName')?.value?.trim() || '';
+      const id = document.getElementById('memberFilterId')?.value?.trim() || '';
+      return { branch, name, id };
+    }
+
+    function applyFilters(list){
+      const { branch, name, id } = getCurrentFilters();
+      const base = branch ? list.filter(m => String(m.branch_char||'').toUpperCase() === branch) : list.slice();
+      const byName = name ? base.filter(m => String(m.name||'').includes(name)) : base;
+      const byId = id ? byName.filter(m => String(m.member_id||'')===id || String(m.member_uuid||'')===id) : byName;
+      return byId;
+    }
+
+    let MEMBERS_PAGE_SIZE = 20;
+    let membersListCache = [];
+    let membersByUUID = new Map();
+    let membersPageIndex = 0;
+    let membersSortKey = null;
+    let membersSortDir = 'asc';
+
+    function sortMembers(list){
+      if(!membersSortKey) return list.slice();
+      const key = membersSortKey;
+      const dir = membersSortDir === 'desc' ? -1 : 1;
+      return list.slice().sort((a,b)=>{
+        const va = (a[key] ?? '').toString();
+        const vb = (b[key] ?? '').toString();
+        // 数字字段用数字比较
+        const na = key==='generation' ? Number(a[key] ?? 0) : null;
+        const nb = key==='generation' ? Number(b[key] ?? 0) : null;
+        if(na!==null && nb!==null){ return (na-nb)*dir; }
+        return va.localeCompare(vb, 'zh-Hans-CN')*dir;
+      });
+    }
+
+    function updateSortIndicators(){
+      document.querySelectorAll('#membersTable thead th.sortable').forEach(th=>{
+        th.classList.remove('sort-asc','sort-desc');
+        const key = th.dataset.sort;
+        if(key && key === membersSortKey){ th.classList.add(membersSortDir==='desc'?'sort-desc':'sort-asc'); }
+      });
+    }
+
+    function toggleSort(key){
+      if(membersSortKey === key){
+        membersSortDir = membersSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        membersSortKey = key;
+        membersSortDir = 'asc';
+      }
+      updateSortIndicators();
+      membersListCache = sortMembers(membersListCache);
+      renderMembersPage(0);
+    }
+    function updatePageInfo(){
+      const total = membersListCache.length;
+      const pages = Math.max(1, Math.ceil(total / MEMBERS_PAGE_SIZE));
+      const el = document.getElementById('pageInfo');
+      if(el) el.textContent = `第 ${Math.min(membersPageIndex+1,pages)} / ${pages} 页（共 ${total} 条）`;
+    }
+
+    // 顶部滚动条与底部表格同步
+    function updateMembersTopScrollbar(){
+      const top = document.getElementById('membersScrollTop');
+      const spacer = document.getElementById('membersScrollTopSpacer');
+      const table = document.getElementById('membersTable');
+      if(!top || !spacer || !table) return;
+      spacer.style.width = table.scrollWidth + 'px';
+    }
+    function initMembersScrollSync(){
+      const top = document.getElementById('membersScrollTop');
+      const bottom = document.getElementById('membersTableWrap');
+      if(!top || !bottom) return;
+      let syncing = false;
+      top.addEventListener('scroll', ()=>{
+        if(syncing) return;
+        syncing = true; bottom.scrollLeft = top.scrollLeft; syncing = false;
+      });
+      bottom.addEventListener('scroll', ()=>{
+        if(syncing) return;
+        syncing = true; top.scrollLeft = bottom.scrollLeft; syncing = false;
+      });
+      updateMembersTopScrollbar();
+    }
+
+    function renderMembers(list){
+      const tbody = document.querySelector('#membersTable tbody');
+      if(!tbody) return;
+      tbody.innerHTML = '';
+      (list||[]).forEach((m)=>{
+        const gender = m.gender ?? m.sex ?? '';
+        const Zibei = m.Zibei ?? m.zibei ?? m.zi ?? '';
+        const branchChar = (m.branch_char||'').toString().toUpperCase();
+        const branchName = MembersDB?.CONFIG?.branchCharToNameMap?.[branchChar] || m.branch_name || '';
+        const gen = MembersDB?.CONFIG?.zibeiToGenerationMap?.[Zibei] ?? (Number(m.generation)||'');
+        const childIds = Array.isArray(m.child_id) ? m.child_id.join(',') : (m.child_id||'');
+        const createdAt = m.created_at || '';
+        const updatedAt = m.updated_at || '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>
+            <div class="flex items-center justify-center">
+              <button class="action-icon" data-action="editMember" title="编辑"><i class="fa fa-edit"></i></button>
+            </div>
+          </td>
+          <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="${m.member_uuid||''}" placeholder="自动生成" disabled/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="${m.member_id||''}" placeholder="自动生成（保存时）" disabled/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${m.name||''}" placeholder="姓名"/></td>
+          <td>
+            <select class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <option value="">请选择</option>
+              <option value="男" ${gender==='男'?'selected':''}>男</option>
+              <option value="女" ${gender==='女'?'selected':''}>女</option>
+            </select>
+          </td>
+          <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${m.birth_date||''}" placeholder="YYYY-MM-DD"/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${m.death_date||''}" placeholder="YYYY-MM-DD"/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${m.occupation||''}" placeholder="职业"/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${Zibei}" placeholder="字辈"/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="${gen}" placeholder="自动" disabled/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${branchChar}" placeholder="四位大写"/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="${branchName}" placeholder="自动" disabled/></td>
+          <td>
+            <div class="relative flex items-center gap-2">
+              <input data-rel="father" class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${m.father_id||''}" placeholder="父 member_uuid" list="uuidOptions"/>
+              <span class="name-preview" title="点击查看">${(membersByUUID.get(m.father_id)||'')}${m.father_id?`（${m.father_id}）`:''}</span>
+              <button class="action-icon text-blue-600 hover:text-blue-700 rel-info" data-info="father_id" title="父ID说明"><i class="fa fa-info-circle"></i></button>
+            </div>
+            <div class="rel-hint muted text-xs mt-1"></div>
+          </td>
+          <td>
+            <div class="relative flex items-center gap-2">
+              <input data-rel="mother" class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${m.mother_id||''}" placeholder="母 member_uuid" list="uuidOptions"/>
+              <span class="name-preview" title="点击查看">${(membersByUUID.get(m.mother_id)||'')}${m.mother_id?`（${m.mother_id}）`:''}</span>
+              <button class="action-icon text-blue-600 hover:text-blue-700 rel-info" data-info="母ID说明" title="母ID说明"><i class="fa fa-info-circle"></i></button>
+            </div>
+            <div class="rel-hint muted text-xs mt-1"></div>
+          </td>
+          <td>
+            <div class="relative flex items-center gap-2">
+              <input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${m.spouse_id||''}" placeholder="配偶 member_uuid" list="uuidOptions"/>
+              <span class="name-preview" title="点击查看">${(membersByUUID.get(m.spouse_id)||'')}${m.spouse_id?`（${m.spouse_id}）`:''}</span>
+              <button class="action-icon text-blue-600 hover:text-blue-700 rel-info" data-info="spouse_id" title="配偶说明"><i class="fa fa-info-circle"></i></button>
+            </div>
+          </td>
+          <td>
+            <div class="relative flex items-center gap-2">
+              <input data-rel="child" class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${childIds}" placeholder="USAZ123456,USAZ123457" list="uuidOptions"/>
+              <span class="name-preview">${(Array.isArray(m.child_id)?m.child_id:childIds.split(/[,，;；\s]+/).filter(Boolean)).map(u=>membersByUUID.get(u)||'').filter(Boolean).join('，')}</span>
+              <button class="action-icon text-blue-600 hover:text-blue-700 rel-info" data-info="child_id" title="子女IDs说明"><i class="fa fa-info-circle"></i></button>
+            </div>
+            <div class="rel-hint muted text-xs mt-1"></div>
+          </td>
+          <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${m.photo||''}" placeholder="/imgs/path.jpg"/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="${m.previous_names||''}" placeholder="曾用名；分号或逗号分隔"/></td>
+          <td><textarea class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" rows="2" placeholder="简要生平、备注">${m.bio||''}</textarea></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="${createdAt}" placeholder="自动" disabled/></td>
+          <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="${updatedAt}" placeholder="自动" disabled/></td>
+          <td>
+             <div class="row-actions flex items-center justify-end gap-2">
+               <button class="action-icon" data-action="saveMember" title="保存"><i class="fa fa-save"></i></button>
+               <button class="action-icon text-red-600 hover:text-red-700" data-action="delMember" title="删除"><i class="fa fa-trash"></i></button>
+             </div>
+           </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderMembersPage(pageIndex){
+      membersPageIndex = pageIndex;
+      const start = pageIndex * MEMBERS_PAGE_SIZE;
+       const slice = membersListCache.slice(start, start + MEMBERS_PAGE_SIZE);
+       renderMembers(slice);
+       // 初始化关系提示框（父/母/子女）
+       initRelationHints(document.querySelector('#membersTable tbody'));
+       updateMembersTopScrollbar();
+        updatePageInfo();
+    }
+
+    async function loadMembers(){
+      setMembersStatus('加载成员中…');
+      try{
+        await MembersDB.initDB();
+        const list = await MembersDB.queryMembers();
+        membersByUUID = new Map(list.map(m => [m.member_uuid, m.name||'']));
+        const filtered = applyFilters(list);
+        const sorted = sortMembers(filtered);
+        membersListCache = sorted;
+         renderMembersPage(0);
+         initMembersScrollSync();
+          populateUUIDOptions(filtered);
+         setMembersStatus(`已加载 ${filtered.length} 条`, 'success');
+      }catch(err){
+        console.error(err);
+        setMembersStatus('加载成员失败：' + (err.message||err), 'error');
+      }
+    }
+
+    function addMemberRow(){
+      const tbody = document.querySelector('#membersTable tbody');
+      if(!tbody) return;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>
+          <div class="flex items-center justify-center">
+            <button class="action-icon" data-action="editMember" title="编辑"><i class="fa fa-edit"></i></button>
+          </div>
+        </td>
+        <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="" placeholder="自动生成" disabled/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="" placeholder="自动生成（保存时）" disabled/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="姓名"/></td>
+        <td>
+          <select class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">请选择</option>
+            <option value="男">男</option>
+            <option value="女">女</option>
+          </select>
+        </td>
+        <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="YYYY-MM-DD"/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="YYYY-MM-DD"/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="职业"/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="字辈"/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="" placeholder="自动" disabled/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="四位大写"/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="" placeholder="自动" disabled/></td>
+        <td>
+          <div class="relative flex items-center gap-2">
+            <input data-rel="father" class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="父 member_uuid" list="uuidOptions"/>
+            <span class="name-preview"></span>
+            <button class="action-icon text-blue-600 hover:text-blue-700 rel-info" data-info="father_id" title="父ID说明"><i class="fa fa-info-circle"></i></button>
+          </div>
+          <div class="rel-hint muted text-xs mt-1"></div>
+        </td>
+        <td>
+          <div class="relative flex items-center gap-2">
+            <input data-rel="mother" class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="母 member_uuid" list="uuidOptions"/>
+            <span class="name-preview"></span>
+            <button class="action-icon text-blue-600 hover:text-blue-700 rel-info" data-info="母ID说明" title="母ID说明"><i class="fa fa-info-circle"></i></button>
+          </div>
+          <div class="rel-hint muted text-xs mt-1"></div>
+        </td>
+        <td>
+          <div class="relative flex items-center gap-2">
+            <input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="配偶 member_uuid" list="uuidOptions"/>
+            <span class="name-preview"></span>
+            <button class="action-icon text-blue-600 hover:text-blue-700 rel-info" data-info="spouse_id" title="配偶说明"><i class="fa fa-info-circle"></i></button>
+          </div>
+        </td>
+        <td>
+          <div class="relative flex items-center gap-2">
+            <input data-rel="child" class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="USAZ123456,USAZ123457"/>
+            <span class="name-preview"></span>
+            <button class="action-icon text-blue-600 hover:text-blue-700 rel-info" data-info="child_id" title="子女IDs说明"><i class="fa fa-info-circle"></i></button>
+          </div>
+          <div class="rel-hint muted text-xs mt-1"></div>
+        </td>
+        <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="/imgs/path.jpg"/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" type="text" value="" placeholder="曾用名；分号或逗号分隔"/></td>
+        <td><textarea class="w-full rounded border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" rows="2" placeholder="简要生平、备注"></textarea></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="" placeholder="自动" disabled/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2 bg-gray-50 text-gray-500" type="text" value="" placeholder="自动" disabled/></td>
+        <td>
+          <div class="row-actions flex items-center justify-end gap-2">
+            <button class="action-icon" data-action="saveMember" title="保存"><i class="fa fa-save"></i></button>
+            <button class="action-icon text-red-600 hover:text-red-700" data-action="delMember" title="删除"><i class="fa fa-trash"></i></button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+      // 初始化新行的父/母/子女提示框
+      initRelationHints(tr);
+    }
+
+    function collectMemberFromRow(tr){
+      const get = (i)=>{ const el = tr.children[i].querySelector('input,select'); return el ? el.value.trim() : ''; };
+      const uuid = get(1);
+      const branch_char = (get(10)||'').toUpperCase();
+      const childRaw = get(15);
+      const childArr = childRaw ? childRaw.split(/[,，;；\s]+/).map(s=>s.trim()).filter(Boolean) : [];
+      return {
+        member_uuid: uuid||'',
+        member_id: get(2)||'',
+        name: get(3)||'',
+        gender: get(4)||'',
+        birth_date: get(5)||'',
+        death_date: get(6)||'',
+        occupation: get(7)||'',
+        Zibei: get(8)||'',
+        branch_char,
+        father_id: get(12)||'',
+        mother_id: get(13)||'',
+        spouse_id: get(14)||'',
+        child_id: childArr,
+        photo: get(16)||'',
+        previous_names: get(17)||'',
+        bio: get(18)||''
+      };
+    }
+
+    async function saveMemberFromRow(tr){
+      try{
+        await MembersDB.initDB();
+        const data = collectMemberFromRow(tr);
+        // 分支代号正则校验（四位大写）
+        if(data.branch_char && !idRegex.test(data.branch_char)){
+          setMembersStatus(`分支代号不合法：${data.branch_char}（需四位大写字母）`, 'error');
+          return;
+        }
+        // 父/母/配偶合法性校验（与弹层保存一致）
+        const curGender = data.gender;
+        const getByUUID = MembersDB.getMemberByUUID;
+        if(data.father_id){ const f = await getByUUID(data.father_id); if(!f){ setMembersStatus(`父ID不存在：${data.father_id}`,'error'); return; } if((f.gender||'') !== '男'){ setMembersStatus('父ID必须为男性','error'); return; } }
+        if(data.mother_id){ const m = await getByUUID(data.mother_id); if(!m){ setMembersStatus(`母ID不存在：${data.mother_id}`,'error'); return; } if((m.gender||'') !== '女'){ setMembersStatus('母ID必须为女性','error'); return; } }
+        if(data.spouse_id){ const s = await getByUUID(data.spouse_id); if(!s){ setMembersStatus(`配偶ID不存在：${data.spouse_id}`,'error'); return; } if(curGender && s.gender && curGender === s.gender){ setMembersStatus('配偶性别需与当前成员不一致','error'); return; }
+          // 女性成员字辈随丈夫
+          if(curGender === '女' && (s.Zibei||'')){
+            data.Zibei = s.Zibei;
+            try{ tr.children[8].querySelector('input').value = data.Zibei; }catch(e){}
+          }
+        }
+        // 子女ID存在性校验
+        if(Array.isArray(data.child_id)){
+          for(const cid of data.child_id){ const c = await getByUUID(cid); if(!c){ setMembersStatus(`子女ID不存在：${cid}`,'error'); return; } }
+        }
+        let saved;
+        const isNew = !data.member_uuid;
+        if(isNew && !data.branch_char){ setMembersStatus('新增需填写分支代号（四位大写）','error'); return; }
+        if(isNew){
+          // 生成唯一 member_id（如未填写），先保存自身，拿到 uuid
+          if(!data.member_id){
+            data.member_id = await generateUniqueMemberId();
+            try{ tr.children[2].querySelector('input').value = data.member_id; }catch(e){}
+          }
+          saved = await MembersDB.addMember(data);
+        }else{
+          const uuid = data.member_uuid;
+          const { member_uuid, ...updates } = data;
+          saved = await MembersDB.updateMember(uuid, updates);
+        }
+        // 展示派生字段
+        const branchChar = (saved.branch_char||'').toUpperCase();
+        const branchName = MembersDB?.CONFIG?.branchCharToNameMap?.[branchChar] || '';
+        const Zibei = saved.Zibei || '';
+        const gen = MembersDB?.CONFIG?.zibeiToGenerationMap?.[Zibei] ?? (Number(saved.generation)||'');
+        tr.children[1].querySelector('input').value = saved.member_uuid||'';
+        tr.children[9].querySelector('input').value = gen||'';
+        tr.children[11].querySelector('input').value = branchName||'';
+    
+        // 计算即将对其他成员执行的改动
+        const preChanges = await computeRelationChanges(saved);
+        if(preChanges.texts.length){
+          const ok = await showConfirmChanges(preChanges.texts);
+          if(!ok){ setMembersStatus('已取消关系联动更新（本人已保存）', 'muted'); return; }
+          // 执行变更
+          for(const op of preChanges.ops){ await op(); }
+          setMembersStatus(`保存成功。${preChanges.texts.join('；')}`, 'success');
+          tr.classList.add('row-flash');
+          setTimeout(()=>{ try{ tr.classList.remove('row-flash'); }catch(e){} }, 800);
+          await loadMembers();
+        } else {
+          setMembersStatus('保存成功（无联动改动）', 'success');
+          tr.classList.add('row-flash');
+          setTimeout(()=>{ try{ tr.classList.remove('row-flash'); }catch(e){} }, 800);
+          await loadMembers();
+        }
+      }catch(err){
+        console.error(err);
+        setMembersStatus('保存失败：' + (err.message||err), 'error');
+      }
+    }
+
+    async function deleteMemberFromRow(tr){
+      try{
+        await MembersDB.initDB();
+        const uuid = tr.children[1].querySelector('input').value.trim();
+        if(!uuid){ tr.remove(); setMembersStatus('已删除行（未入库）', 'success'); return; }
+        const msgs = [];
+        // 清理配偶
+        const spouse = await MembersDB.queryMembers({ spouse_id: uuid });
+        if(spouse && spouse[0]){
+          const s = spouse[0];
+          await MembersDB.updateMember(s.member_uuid, { spouse_id: '' });
+          msgs.push(`已清理配偶(${s.name})的 spouse_id`);
+        }
+        // 清理父母的 child_id
+        const parents = await MembersDB.queryMembers({ child_id: [uuid] });
+        for(const p of parents){
+          const arr = (p.child_id||[]).filter(x=>x!==uuid);
+          await MembersDB.updateMember(p.member_uuid, { child_id: arr });
+          msgs.push(`已从父母(${p.name})的 child_id 移除 ${uuid}`);
+        }
+        // 清理子女的父/母
+        const childrenByFather = await MembersDB.queryMembers({ father_id: uuid });
+        for(const c of childrenByFather){ await MembersDB.updateMember(c.member_uuid, { father_id: '' }); msgs.push(`已清理子女(${c.name})的 father_id`); }
+        const childrenByMother = await MembersDB.queryMembers({ mother_id: uuid });
+        for(const c of childrenByMother){ await MembersDB.updateMember(c.member_uuid, { mother_id: '' }); msgs.push(`已清理子女(${c.name})的 mother_id`); }
+        // 删除自身
+        await MembersDB.deleteMember(uuid);
+        tr.remove();
+        setMembersStatus(`已删除。${msgs.join('；')}`, 'success');
+      }catch(err){
+        console.error(err);
+        setMembersStatus('删除失败：' + (err.message||err), 'error');
+      }
+    }
+
+    async function exportMembers(){
+      try{
+        const json = await MembersDB.exportMembers();
+        document.getElementById('membersExportOutput').value = json;
+        setMembersStatus('已导出成员', 'success');
+      }catch(err){
+        console.error(err);
+        setMembersStatus('导出成员失败：' + (err.message||err), 'error');
+      }
+    }
+
+    function exportFilteredMembers(){
+      try{
+        const json = JSON.stringify(membersListCache, null, 2);
+        document.getElementById('membersExportOutput').value = json;
+        setMembersStatus('已导出过滤结果', 'success');
+      }catch(err){
+        console.error(err);
+        setMembersStatus('导出过滤结果失败：' + (err.message||err), 'error');
+      }
+    }
+
+    function importMembersFromFile(file){
+      if(!file) return;
+      setMembersStatus('导入成员中…');
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try{
+          const arr = JSON.parse(e.target.result);
+          if(!Array.isArray(arr)) throw new Error('文件内容应为成员数组');
+          const overwrite = !!document.getElementById('overwriteMembers').checked;
+          const res = await MembersDB.importMembers(arr, { overwrite });
+          if(res.fail === 0){
+            setMembersStatus(`导入成功 ${res.ok} 条`, 'success');
+            await loadMembers();
+          } else {
+            setMembersStatus(`导入完成：成功 ${res.ok}，失败 ${res.fail}（${(res.errors||[]).join('；')}）`, res.fail ? 'error' : 'success');
+            await loadMembers();
+          }
+        }catch(err){
+          console.error(err);
+          setMembersStatus('导入失败：' + (err.message||err), 'error');
+        }
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    async function loadConfig(){
+      setStatus('加载中…');
+      try{
+        await MembersDB.initDB();
+        const cfg = await MembersDB.getConfig();
+        const branches = (cfg && cfg.branches) || MembersDB.CONFIG.branches || [];
+        const gens = (cfg && cfg.generationNames) || MembersDB.CONFIG.generationNames || [];
+        renderBranches(branches);
+        populateBranchOptions(branches);
+        renderGenerations(gens);
+        setStatus('已加载', 'success');
+      }catch(err){
+        console.error(err);
+        setStatus('加载失败：' + (err.message||err), 'error');
+      }
+    }
+
+    async function saveConfig(){
+      setStatus('保存中…');
+      const branches = collectBranches();
+      const gens = collectGenerations();
+      const bErrors = validateBranches(branches);
+      const gErrors = validateGenerations(gens);
+      document.getElementById('branchErrors').textContent = bErrors.join('；');
+      document.getElementById('genErrors').textContent = gErrors.join('；');
+      if(bErrors.length || gErrors.length){
+        setStatus('校验失败，请修正错误后再试', 'error');
+        return;
+      }
+      try{
+        await MembersDB.setConfig({ branches, generationNames: gens });
+        setStatus('已保存', 'success');
+      }catch(err){
+        console.error(err);
+        setStatus('保存失败：' + (err.message||err), 'error');
+      }
+    }
+
+    // 新增：一次性加载四类数据（配置、成员、家族/管理）
+    async function loadAllStores(){
+      try{
+        setStatus('加载中…');
+        await MembersDB.initDB();
+        // 加载配置
+        const cfg = await MembersDB.getConfig();
+        const branches = (cfg && cfg.branches) || MembersDB.CONFIG.branches || [];
+        const gens = (cfg && cfg.generationNames) || MembersDB.CONFIG.generationNames || [];
+        renderBranches(branches);
+        populateBranchOptions(branches);
+        renderGenerations(gens);
+        // 加载成员
+        setMembersStatus('加载成员中…');
+        const list = await MembersDB.queryMembers();
+        membersByUUID = new Map(list.map(m => [m.member_uuid, m.name||'']));
+        const filtered = applyFilters(list);
+        const sorted = sortMembers(filtered);
+        membersListCache = sorted;
+        renderMembersPage(0);
+        initMembersScrollSync();
+        populateUUIDOptions(filtered);
+        setMembersStatus(`已加载 ${filtered.length} 条`, 'success');
+        // 加载家族/管理信息
+        const persisted = await MembersDB.getFamilyMgmt();
+        if(persisted && (persisted.family || persisted.management)){
+          window.FamilyMgmtDraft = { family: persisted.family || {}, management: persisted.management || {} };
+          renderFamilyMgmt(window.FamilyMgmtDraft);
+        } else {
+          try{ renderFamilyMgmt(getFamilyAndManagement()); }catch(e){}
+        }
+        setStatus('四项数据已加载', 'success');
+      }catch(err){
+        console.error(err);
+        setStatus('加载失败：' + (err.message||err), 'error');
+      }
+    }
+
+    function addBranchRow(){
+      const tbody = document.querySelector('#branchesTable tbody');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input class="w-full rounded border border-gray-300 p-2" type="text" value="" placeholder="四位大写字母"/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2" type="text" value="" placeholder="分支名称"/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2" type="text" value="" placeholder="描述"/></td>
+        <td><button class="btn-danger bg-red-600 text-white hover:bg-red-700 border-red-600" data-action="del"><i class="fa fa-trash mr-1"></i> 删除</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    function addGenRow(){
+      const tbody = document.querySelector('#gensTable tbody');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input class="w-full rounded border border-gray-300 p-2" type="number" min="1" step="1" value="" placeholder="整数"/></td>
+        <td><input class="w-full rounded border border-gray-300 p-2" type="text" value="" placeholder="字辈，逗号分隔"/></td>
+        <td><button class="btn-danger bg-red-600 text-white hover:bg-red-700 border-red-600" data-action="del"><i class="fa fa-trash mr-1"></i>删除</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    function exportConfig(){
+      MembersDB.exportConfig().then(json => {
+        document.getElementById('exportOutput').value = json;
+        setStatus('已导出', 'success');
+      }).catch(err => {
+        console.error(err);
+        setStatus('导出失败：' + (err.message||err), 'error');
+      });
+    }
+
+    async function exportAll(){
+      try{
+        setStatus('导出全库中…');
+        await MembersDB.initDB();
+        const cfg = await MembersDB.getConfig();
+        const members = await MembersDB.queryMembers();
+        const data = { config: cfg, members };
+        const json = JSON.stringify(data, null, 2);
+        document.getElementById('exportOutput').value = json;
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'family_db_backup.json';
+        a.click();
+        setStatus('已导出全库', 'success');
+        setTimeout(()=>URL.revokeObjectURL(url), 1000);
+      }catch(err){
+        console.error(err);
+        setStatus('导出全库失败：' + (err.message||err), 'error');
+      }
+    }
+
+    function importAllFromFile(file){
+      if(!file) return;
+      setStatus('导入全库中…');
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try{
+          const obj = JSON.parse(e.target.result);
+          const members = Array.isArray(obj && obj.members) ? obj.members : null;
+          const cfg = obj && obj.config ? obj.config : null;
+          await MembersDB.initDB();
+          if(cfg) await MembersDB.importConfig(cfg);
+          if(members){
+            const res = await MembersDB.importMembers(members, { overwrite: true });
+            if(res.fail && res.fail > 0){
+              setStatus(`导入完成：成功 ${res.ok}，失败 ${res.fail}`, 'error');
+            }
+          }
+          setStatus('全库导入成功', 'success');
+          await loadConfig();
+          await loadMembers();
+        }catch(err){
+          console.error(err);
+          setStatus('导入全库失败：' + (err.message||err), 'error');
+        }
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    async function clearDB(){
+      try{
+        if(!confirm('确定清空数据库（成员与配置将重置为默认）？')) return;
+        setStatus('清空数据库中…');
+        await MembersDB.resetDB();
+        setStatus('已清空并重置默认配置', 'success');
+        await loadConfig();
+        await loadMembers();
+        const el = document.getElementById('exportOutput'); if(el) el.value = '';
+        const mel = document.getElementById('membersExportOutput'); if(mel) mel.value = '';
+      }catch(err){
+        console.error(err);
+        setStatus('清空数据库失败：' + (err.message||err), 'error');
+      }
+    }
+
+    async function validateAllMembers(){
+      try{
+        setMembersStatus('校验中…');
+        await MembersDB.initDB();
+        const list = await MembersDB.queryMembers();
+        const byUUID = new Map(list.map(m => [m.member_uuid, m]));
+        const errs = [];
+        const id6 = /^[0-9]{6}$/;
+        const b4 = /^[A-Z]{4}$/;
+        const errTypes = new Map(); // 按错误类型分组计数
+        const affects = new Set(); // 涉及的成员数量统计
+        for(const m of list){
+          const mu = m.member_uuid || '';
+          const addErr = (type, msg)=>{ errs.push(msg); errTypes.set(type, (errTypes.get(type)||0) + 1); if(mu) affects.add(mu); };
+          if(m.member_id && !id6.test(String(m.member_id))) addErr('member_id非法', `${mu} member_id 非法`);
+          if(m.branch_char && !b4.test(String(m.branch_char))) addErr('branch_char非法', `${mu} branch_char 非法`);
+          if(m.gender && !['男','女'].includes(m.gender)) addErr('gender非法', `${mu} gender 非法`);
+          if(m.father_id && !byUUID.has(m.father_id)) addErr('父ID不存在', `${mu} 父ID不存在：${m.father_id}`);
+          if(m.mother_id && !byUUID.has(m.mother_id)) addErr('母ID不存在', `${mu} 母ID不存在：${m.mother_id}`);
+          if(m.spouse_id && !byUUID.has(m.spouse_id)) addErr('配偶ID不存在', `${mu} 配偶ID不存在：${m.spouse_id}`);
+          if(Array.isArray(m.child_id)){
+            for(const cid of m.child_id){ if(!byUUID.has(cid)) addErr('子女ID不存在', `${mu} 子女ID不存在：${cid}`); }
+          }
+          if(m.father_id){
+            const f = byUUID.get(m.father_id);
+            const inChildren = f && Array.isArray(f.child_id) && f.child_id.includes(mu);
+            if(!inChildren) addErr('未在父亲child_id中', `${mu} 未在父亲(${f?.name||m.father_id})的 child_id 中`);
+          }
+          if(m.mother_id){
+            const mo = byUUID.get(m.mother_id);
+            const inChildren = mo && Array.isArray(mo.child_id) && mo.child_id.includes(mu);
+            if(!inChildren) addErr('未在母亲child_id中', `${mu} 未在母亲(${mo?.name||m.mother_id})的 child_id 中`);
+          }
+          if(m.spouse_id){
+            const s = byUUID.get(m.spouse_id);
+            if(s && s.spouse_id !== mu) addErr('配偶未指向本人', `${mu} 配偶(${s?.name||m.spouse_id})未指向本人的 spouse_id`);
+          }
+          if(Array.isArray(m.child_id)){
+            const isFather = (m.gender||'').trim()==='男';
+            const isMother = (m.gender||'').trim()==='女';
+            for(const cid of m.child_id){
+              const c = byUUID.get(cid);
+              if(!c) continue;
+              if(isFather && c.father_id !== mu) addErr('子女father未指向本人', `${mu} 子女(${c?.name||cid})的 father_id 未指向本人`);
+              if(isMother && c.mother_id !== mu) addErr('子女mother未指向本人', `${mu} 子女(${c?.name||cid})的 mother_id 未指向本人`);
+            }
+          }
+        }
+        const errListEl = document.getElementById('memberErrors');
+        if(errListEl) errListEl.textContent = errs.join('；');
+        const summaryEl = document.getElementById('memberErrorsSummary');
+        if(summaryEl){
+          const parts = Array.from(errTypes.entries()).map(([t,c])=>`${t} ${c} 条`);
+          const total = errs.length;
+          const uniq = affects.size;
+          summaryEl.innerHTML = parts.length ? `按类型统计：${parts.join('，')}。总错误数：${total}，涉及成员：${uniq}` : `按类型统计：无。总错误数：${total}，涉及成员：${uniq}`;
+        }
+        lastFixPlan = computeGlobalFixes(list);
+        renderFixSuggestions(lastFixPlan);
+        const btn = document.getElementById('acceptFixesBtn'); if(btn) btn.disabled = !lastFixPlan.ops.length;
+        if(errs.length){ setMembersStatus(`校验发现 ${errs.length} 项问题，已刷新列表`, 'error'); await loadMembers(); }
+        else { setMembersStatus('校验通过，无问题', 'success'); }
+      }catch(err){ console.error(err); setMembersStatus('校验失败：' + (err.message||err), 'error'); }
+    }
+
+    /* removed duplicate importMembersFromFile: config import logic lives in importConfigFromFile() */
+
+    async function importConfigFromFile(file){
+      if(!file) return;
+      setStatus('导入中…');
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try{
+          const obj = JSON.parse(e.target.result);
+          const res = await MembersDB.importConfig(obj);
+          if(res.fail === 0){
+            setStatus('导入成功', 'success');
+            loadConfig();
+          } else {
+            setStatus('导入部分失败：' + (res.errors||[]).join('；'), 'error');
+          }
+        }catch(err){
+          console.error(err);
+          setStatus('导入失败：' + (err.message||err), 'error');
+        }
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    // 事件绑定
+    document.addEventListener('click', async (e)=>{
+      const t = e.target;
+       if(t.closest && t.closest('th.sortable')){
+         const th = t.closest('th.sortable');
+         const key = th.dataset.sort;
+         if(key) toggleSort(key);
+       }
+      if(t.id === 'clearDBBtn') clearDB();
+      if(t.id === 'addBranchBtn') addBranchRow();
+      if(t.id === 'addGenBtn') addGenRow();
+      // 统一处理行内 data-action 事件，兼容点击图标<i>的情况
+      const actionEl = t.closest && t.closest('[data-action]');
+      if(actionEl){
+        const action = actionEl.dataset.action;
+        if(action === 'del'){
+          const tr = actionEl.closest('tr');
+          tr && tr.remove();
+        } else if(action === 'saveMember'){
+          const tr = actionEl.closest('tr');
+          tr && saveMemberFromRow(tr);
+        } else if(action === 'delMember'){
+          const tr = actionEl.closest('tr');
+          tr && deleteMemberFromRow(tr);
+        } else if(action === 'editMember'){
+          const tr = actionEl.closest('tr');
+          tr && openMemberEditorFromRow(tr);
+        }
+      }
+      // 成员区事件
+      if(t.id === 'loadMembersBtn') loadMembers();
+      if(t.id === 'validateMembersBtn') await validateAllMembers();
+      if(t.id === 'addMemberBtn') addMemberRow();
+      if(t.id === 'applyMemberFilters') loadMembers();
+      if(t.id === 'clearMemberFilters'){
+        document.getElementById('memberFilterBranch').value = '';
+        document.getElementById('memberFilterName').value = '';
+        document.getElementById('memberFilterId').value = '';
+        loadMembers();
+      }
+      if(t.id === 'acceptFixesBtn') await applyFixPlan(lastFixPlan);
+      if(t.id === 'prevPageBtn'){
+        if(membersPageIndex > 0) renderMembersPage(membersPageIndex - 1);
+      }
+      if(t.id === 'nextPageBtn'){
+        const pages = Math.max(1, Math.ceil(membersListCache.length / MEMBERS_PAGE_SIZE));
+        if(membersPageIndex < pages - 1) renderMembersPage(membersPageIndex + 1);
+      }
+      // 配置保存
+      if(t.id === 'saveBranchesBtn') saveConfig();
+      if(t.id === 'saveGensBtn') saveConfig();
+      // 全局：从四个数据库中加载
+      if(t.id === 'loadAllStoresBtn') loadAllStores();
+      if(t.id === 'compactMode'){
+        const tbl = document.getElementById('membersTable');
+        if(tbl){ tbl.classList.toggle('compact', t.checked); }
+      }
+      // 点击 info 图标显示帮助
+      if(t.closest && t.closest('.rel-info')){
+        const btn = t.closest('.rel-info');
+        const type = btn.dataset.info;
+        showHelpBubble(btn, type);
+      }
+      // 点击预览姓名（父/母/配偶/子女）
+      if(t.tagName === 'INPUT' && t.closest('#membersTable')){
+        const td = t.closest('td');
+        const idx = td ? td.cellIndex : -1;
+        const preview = td ? td.querySelector('.name-preview') : null;
+        const val = (t.value||'').trim();
+        if(!preview) return;
+        if(idx === 11 || idx === 12 || idx === 13){
+          // 父/母/配偶：显示 姓名（UUID），并在预览元素上存储 uuid，提示可点击
+          const name = membersByUUID.get(val) || '';
+          preview.innerHTML = name ? `${name}${val?`（${val}）`:''}` : (val||'');
+          preview.dataset.uuid = val || '';
+          preview.title = '点击打开编辑弹层';
+        } else if(idx === 14){
+          // 子女IDs：显示姓名列表（点击将弹出子女列表）
+          const parts = val ? val.split(/[,，;；\s]+/).map(s=>s.trim()).filter(Boolean) : [];
+          const names = parts.map(u => membersByUUID.get(u)||'').filter(Boolean).join('，');
+          preview.textContent = names;
+          preview.title = parts.length ? '点击查看子女列表' : '';
+        }
+      }
+    });
+
+    document.getElementById('membersPageSize').addEventListener('change', (e)=>{
+       MEMBERS_PAGE_SIZE = Number(e.target.value) || 20;
+       renderMembersPage(0);
+     });
+     const importFamilyEl = document.getElementById('importFamilyJSFile');
+     if(importFamilyEl){
+       importFamilyEl.addEventListener('change', async (e)=>{
+         try{
+           await importAllFromJS(e.target.files && e.target.files[0]);
+         }catch(err){
+           console.error(err);
+           setStatus('导入全库失败：' + (err.message||err), 'error');
+         }finally{
+           e.target.value = '';
+         }
+       });
+     }
+     
+
+    // 成员库为空时，导入默认 members
+    async function ensureMembersSeeded(){
+      try{
+        await MembersDB.initDB();
+        const existing = await MembersDB.queryMembers();
+        if(!existing || existing.length === 0){
+          setStatus('成员库为空，正在导入默认成员…');
+          const res = await MembersDB.importMembers(MembersDB.CONFIG.members, { overwrite: false });
+          if(res.fail === 0){
+            setStatus(`已导入 ${res.ok} 条成员`, 'success');
+          } else {
+            setStatus(`导入完成：成功 ${res.ok}，失败 ${res.fail}（${(res.errors||[]).join('；')}）`, res.fail ? 'error' : 'success');
+          }
+          await loadMembers();
+        }
+      }catch(err){
+        console.error(err);
+        setStatus('成员导入失败：' + (err.message||err), 'error');
+      }
+    }
+
+    // 初始加载
+    (async () => {
+      try{
+        await ensureMembersSeeded();
+        await loadConfig();
+        await loadMembers();
+      }catch(e){
+        console.error(e);
+        setStatus('初始化失败：' + (e.message||e), 'error');
+      }
+    })();
+
+    // 全局错误拦截：捕获未处理的错误并提示在页面状态栏
+    window.addEventListener('error', function(e){
+      try{
+        console.error('UncaughtError:', e.error||e.message||e);
+        setStatus('页面错误：' + (e.message||e), 'error');
+        setMembersStatus('页面错误：' + (e.message||e), 'error');
+      }catch(_err){ /* noop */ }
+    });
+    window.addEventListener('unhandledrejection', function(e){
+      try{
+        const msg = (e.reason && e.reason.message) ? e.reason.message : (e.reason||'未知错误');
+        console.error('UnhandledRejection:', e.reason||e);
+        setStatus('未捕获的异步错误：' + msg, 'error');
+        setMembersStatus('未捕获的异步错误：' + msg, 'error');
+      }catch(_err){ /* noop */ }
+    });
+
+    // 辅助：根据 member_uuid 在表格中定位行
+    function findRowByUUID(uuid){
+      try{
+        const rows = document.querySelectorAll('#membersTable tbody tr');
+        for(const tr of rows){
+          const u = tr.children[1]?.querySelector('input')?.value?.trim() || '';
+          if(u === uuid) return tr;
+        }
+      }catch(e){ /* noop */ }
+      return null;
+    }
+
+    // 点击预览标签打开编辑（父/母/配偶）或显示子女列表
+    document.addEventListener('click', function(e){
+      const t = e.target;
+      if(t.classList && t.classList.contains('name-preview')){
+        const td = t.closest('td');
+        const idx = td ? td.cellIndex : -1;
+        if(idx === 11 || idx === 12 || idx === 13){
+          const uuid = t.dataset.uuid || (td.querySelector('input')?.value || '').trim();
+          if(uuid){
+            const targetTr = findRowByUUID(uuid);
+            if(targetTr){ openMemberEditorFromRow(targetTr); }
+            else { showPreviewBubble(td, `未找到成员 ${uuid}`); }
+          }
+        } else if(idx === 14){
+          const input = td.querySelector('input');
+          const val = (input?.value || '').trim();
+          const parts = val ? val.split(/[,，;；\s]+/).map(function(s){ return s.trim(); }).filter(Boolean) : [];
+          if(parts.length){
+            const html = parts.map(function(u){
+              const name = membersByUUID.get(u) || '';
+              const label = name ? `${name}（${u}）` : u;
+              return `<a href="#" class="open-member-link" data-uuid="${u}" style="margin-right:8px;">${label}</a>`;
+            }).join('');
+            showPreviewBubble(td, html);
+          }
+        }
+      }
+      // 在预览子女列表弹窗中点击成员链接，打开编辑弹层
+      if(t.closest && t.closest('.open-member-link')){
+        const a = t.closest('.open-member-link');
+        const uuid = (a && a.dataset && a.dataset.uuid) ? a.dataset.uuid : '';
+        if(uuid){
+          const tr = findRowByUUID(uuid);
+          if(tr){ openMemberEditorFromRow(tr); }
+        }
+        if(e && typeof e.preventDefault === 'function') e.preventDefault();
+      }
+    });
+
+
+    // 引导气泡：点击 info 图标显示说明
+    async function showHelpBubble(target, type){
+      const texts = {
+        father_id:'填写父亲的 member_uuid；保存后将确保子女关系双向一致（在父亲的 child_id 中包含本人）。',
+        mother_id:'填写母亲的 member_uuid；保存后将确保子女关系双向一致（在母亲的 child_id 中包含本人）。',
+        spouse_id:'填写配偶的 member_uuid；该字段为双向关系，保存时会提示自动同步对方的 spouse_id。',
+        child_id:'多个子女用英文逗号、中文逗号或分号分隔；保存时会根据当前成员性别自动写入子女的 father_id 或 mother_id。'
+      };
+      const text = texts[type] || '请填写有效的 member_uuid。';
+      const rect = target.getBoundingClientRect();
+      const bubble = document.createElement('div');
+      bubble.className = 'help-bubble';
+      bubble.style.left = (rect.left + window.scrollX + 20) + 'px';
+      bubble.style.top = (rect.top + window.scrollY + 24) + 'px';
+      bubble.innerHTML = `<div class="flex items-center justify-between gap-2"><div class="text-sm">${text}</div><button class="action-icon" data-close-bubble="1" title="关闭"><i class="fa fa-times"></i></button></div>`;
+      document.body.appendChild(bubble);
+      const remove = ()=>{ try{ bubble.remove(); }catch(e){} document.removeEventListener('click', onDocClick); };
+      const onDocClick = (e)=>{ if(e.target!==target && !bubble.contains(e.target)){ remove(); } };
+      const closeBtn = bubble.querySelector('[data-close-bubble]');
+      if(closeBtn){ closeBtn.addEventListener('click', (e)=>{ e.stopPropagation(); remove(); }); }
+      setTimeout(remove, 8000);
+      setTimeout(()=>document.addEventListener('click', onDocClick), 0);
+    } 
+
+    // 预览气泡：在成员关系输入框中预览姓名
+    function showPreviewBubble(targetTd, text){
+      const rect = targetTd.getBoundingClientRect();
+      const bubble = document.createElement('div');
+      bubble.className = 'help-bubble';
+      bubble.style.left = (rect.left + window.scrollX + 20) + 'px';
+      bubble.style.top = (rect.top + window.scrollY + 24) + 'px';
+      bubble.innerHTML = `<div class="flex items-center justify-between gap-2"><div class="text-sm">${text||''}</div><button class="action-icon" data-close-bubble="1" title="关闭"><i class="fa fa-times"></i></button></div>`;
+      document.body.appendChild(bubble);
+      const remove = ()=>{ try{ bubble.remove(); }catch(e){} document.removeEventListener('click', onDocClick); };
+      const onDocClick = (e)=>{ if(e.target!==bubble && !bubble.contains(e.target)){ remove(); } };
+      const closeBtn = bubble.querySelector('[data-close-bubble]');
+      if(closeBtn){ closeBtn.addEventListener('click', (e)=>{ e.stopPropagation(); remove(); }); }
+      setTimeout(remove, 8000);
+      setTimeout(()=>document.addEventListener('click', onDocClick), 0);
+    }
+
+    // 关系联动确认：如有提示文本则弹窗确认（当前成员库已自动双向同步，文本仅用于提示）
+    async function showConfirmChanges(texts){
+      if(!Array.isArray(texts) || !texts.length) return true;
+      return new Promise(function(resolve){
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.left = '0';
+        overlay.style.top = '0';
+        overlay.style.right = '0';
+        overlay.style.bottom = '0';
+        overlay.style.background = 'rgba(0,0,0,0.35)';
+        overlay.style.zIndex = '100';
+
+        const modal = document.createElement('div');
+        modal.style.position = 'absolute';
+        modal.style.left = '50%';
+        modal.style.top = '20%';
+        modal.style.transform = 'translateX(-50%)';
+        modal.style.background = '#fff';
+        modal.style.border = '1px solid #e5e7eb';
+        modal.style.borderRadius = '10px';
+        modal.style.boxShadow = '0 12px 28px rgba(0,0,0,.12)';
+        modal.style.width = '440px';
+        modal.style.maxWidth = '90vw';
+        modal.style.padding = '12px 16px';
+
+        const header = document.createElement('div');
+        header.className = 'text-base font-semibold mb-2';
+        header.textContent = '即将执行的关系联动更新';
+
+        const body = document.createElement('div');
+        body.className = 'text-sm text-gray-700 mb-3';
+        body.innerHTML = texts.map(function(t){ return `<div>• ${t}</div>`; }).join('');
+
+        const footer = document.createElement('div');
+        footer.className = 'flex justify-end gap-2';
+        footer.innerHTML = '<button id="confirmChangesCancelBtn" class="btn">取消</button>\n<button id="confirmChangesOkBtn" class="btn">确定</button>';
+
+        modal.appendChild(header);
+        modal.appendChild(body);
+        modal.appendChild(footer);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        const cleanup = function(){ try{ overlay.remove(); }catch(e){} };
+        overlay.addEventListener('click', function(e){ if(e.target === overlay){ cleanup(); resolve(false); } });
+        modal.querySelector('#confirmChangesCancelBtn').addEventListener('click', function(){ cleanup(); resolve(false); });
+        modal.querySelector('#confirmChangesOkBtn').addEventListener('click', function(){ cleanup(); resolve(true); });
+      });
+    }
+
+    // 计算关系联动改动：在保存成员后，生成需要同步到其他成员的改动（父母/子女/配偶的双向关系）
+    async function computeRelationChanges(saved){
+      try{
+        await MembersDB.initDB();
+        const texts = [];
+        const ops = [];
+        if(!saved || !saved.member_uuid) return { texts, ops };
+        const mu = saved.member_uuid;
+        const getByUUID = MembersDB.getMemberByUUID;
+        // 配偶双向关系：确保对方 spouse_id 指向本人
+        if(saved.spouse_id){
+          const s = await getByUUID(saved.spouse_id);
+          if(s && s.spouse_id !== mu){
+            texts.push(`同步配偶(${s.name||s.member_uuid})指向本人`);
+            ops.push(()=>MembersDB.updateMember(s.member_uuid, { spouse_id: mu }));
+          }
+        }
+        // 父母 child_id 列表包含本人
+        const ensureParentChildList = async (pid, relLabel)=>{
+          const p = await getByUUID(pid);
+          if(!p) return;
+          const arr = Array.isArray(p.child_id) ? p.child_id.slice() : [];
+          if(!arr.includes(mu)){
+            texts.push(`${relLabel}(${p.name||p.member_uuid})的 child_id 加入本人`);
+            ops.push(()=>MembersDB.updateMember(p.member_uuid, { child_id: arr.concat(mu) }));
+          }
+        };
+        if(saved.father_id){ await ensureParentChildList(saved.father_id, '父亲'); }
+        if(saved.mother_id){ await ensureParentChildList(saved.mother_id, '母亲'); }
+        // 子女反向父/母字段指向本人（依据当前成员性别）
+        const isFather = (saved.gender||'').trim()==='男';
+        const isMother = (saved.gender||'').trim()==='女';
+        if(Array.isArray(saved.child_id)){
+          for(const cid of saved.child_id){
+            const c = await getByUUID(cid);
+            if(!c) continue;
+            if(isFather && c.father_id !== mu){
+              texts.push(`子女(${c.name||c.member_uuid})的 father_id 指向本人`);
+              ops.push(()=>MembersDB.updateMember(c.member_uuid, { father_id: mu }));
+            }
+            if(isMother && c.mother_id !== mu){
+              texts.push(`子女(${c.name||c.member_uuid})的 mother_id 指向本人`);
+              ops.push(()=>MembersDB.updateMember(c.member_uuid, { mother_id: mu }));
+            }
+          }
+        }
+        return { texts, ops };
+      }catch(e){ console.warn('computeRelationChanges failed', e); return { texts: [], ops: [] }; }
+    }
+
+    // 全局修复计划：根据当前成员列表生成修复建议和可执行操作
+    let lastFixPlan = { texts: [], ops: [] };
+    function renderFixSuggestions(plan){
+      const box = document.getElementById('fixSuggestions');
+      if(!box) return;
+      const texts = (plan && Array.isArray(plan.texts)) ? plan.texts : [];
+      const opsLen = (plan && Array.isArray(plan.ops)) ? plan.ops.length : 0;
+      const errCount = texts.length;
+      if(errCount){
+        box.innerHTML = 
+          `<div class="mb-2 text-sm">共发现 ${errCount} 项问题（${opsLen} 项可自动修复）</div>
+           <ul class="list-disc pl-5">${texts.map(t=>'<li>'+t+'</li>').join('')}</ul>`;
+      } else { box.textContent = '无可用修复建议'; }
+      const btn = document.getElementById('acceptFixesBtn'); 
+      if(btn) btn.disabled = opsLen===0;
+    }
+    function computeGlobalFixes(list){
+      const texts = [];
+      const ops = [];
+      const byUUID = new Map(list.map(m => [m.member_uuid, m]));
+      const ensureSpouse = async (a, b)=>{ await MembersDB.updateMember(b.member_uuid, { spouse_id: a.member_uuid }); };
+      const ensureParentChild = async (parent, child, type)=>{
+        const update = {}; if(type==='father'){ update.father_id = parent.member_uuid; } else if(type==='mother'){ update.mother_id = parent.member_uuid; }
+        await MembersDB.updateMember(child.member_uuid, update);
+      };
+      const ensureChildListContains = async (parent, child)=>{
+        const arr = Array.isArray(parent.child_id) ? parent.child_id.slice() : [];
+        if(!arr.includes(child.member_uuid)) arr.push(child.member_uuid);
+        await MembersDB.updateMember(parent.member_uuid, { child_id: arr });
+      };
+      for(const m of list){
+        const mu = m.member_uuid;
+        if(m.spouse_id){ const s = byUUID.get(m.spouse_id); if(s && s.spouse_id !== mu){ texts.push(`${m.name||mu} 的配偶(${s.name||s.member_uuid})未指向本人，建议修正`); ops.push(()=>ensureSpouse(m, s)); } }
+        if(Array.isArray(m.child_id) && m.child_id.length){
+          const isFather = (m.gender||'').trim()==='男';
+          const isMother = (m.gender||'').trim()==='女';
+          for(const cid of m.child_id){ const c = byUUID.get(cid); if(!c) continue;
+            if(isFather && c.father_id !== mu){ texts.push(`${m.name||mu} 的子女(${c.name||cid})father_id未指向本人，建议修正`); ops.push(()=>ensureParentChild(m, c, 'father')); }
+            if(isMother && c.mother_id !== mu){ texts.push(`${m.name||mu} 的子女(${c.name||cid})mother_id未指向本人，建议修正`); ops.push(()=>ensureParentChild(m, c, 'mother')); }
+          }
+        }
+        if(m.father_id){ const f = byUUID.get(m.father_id); if(f){ const arr = Array.isArray(f.child_id)?f.child_id:[]; if(!arr.includes(mu)){ texts.push(`父亲(${f.name||f.member_uuid})的 child_id 不包含本人，建议加入`); ops.push(()=>ensureChildListContains(f, m)); } } }
+        if(m.mother_id){ const mo = byUUID.get(m.mother_id); if(mo){ const arr = Array.isArray(mo.child_id)?mo.child_id:[]; if(!arr.includes(mu)){ texts.push(`母亲(${mo.name||mo.member_uuid})的 child_id 不包含本人，建议加入`); ops.push(()=>ensureChildListContains(mo, m)); } } }
+      }
+      return { texts, ops };
+    }
+
+    async function applyFixPlan(plan){
+      if(!plan || !plan.ops || !plan.ops.length){ setMembersStatus('无修复建议可应用', 'muted'); return; }
+      setMembersStatus(`正在应用 ${plan.ops.length} 项修复…`);
+      try{
+        await MembersDB.initDB();
+        let ok = 0, fail = 0; const errs = [];
+        for(const op of plan.ops){
+          try{ await op(); ok++; }catch(e){ console.error(e); fail++; errs.push(e?.message||String(e)); }
+        }
+        // 重新查询以确认写入，并基于最新数据重新生成修复建议
+        const list = await MembersDB.queryMembers();
+        lastFixPlan = computeGlobalFixes(list);
+        renderFixSuggestions(lastFixPlan);
+        await loadMembers();
+        setMembersStatus(`修复完成：成功 ${ok}，失败 ${fail}${fail? '（'+errs.join('；')+'）':''}`, fail? 'error':'success');
+        await validateAllMembers();
+      }catch(err){
+        console.error(err);
+        setMembersStatus('应用修复失败：' + (err.message||err), 'error');
+      }
+    }
+    // ====== 编辑弹层逻辑 ======
+    let currentEditingRow = null;
+    function populateBranchSelectOptions(sel){
+      sel.innerHTML = '';
+      const cfg = MembersDB.CONFIG || {};
+      (cfg.branches||[]).forEach(b => {
+        const opt = document.createElement('option');
+        const id = String(b.id||'').toUpperCase();
+        opt.value = id;
+        opt.textContent = `${b.name||id}（${id}）`;
+        sel.appendChild(opt);
+      });
+    }
+    function openMemberEditorFromRow(tr){
+      currentEditingRow = tr;
+      const get = (i)=>{ const el = tr.children[i].querySelector('input,select'); return el ? el.value.trim() : ''; };
+      document.getElementById('memberEditorOverlay').style.display = 'flex';
+      const sel = document.getElementById('edit_branch_char');
+      populateBranchSelectOptions(sel);
+      const zsel = document.getElementById('edit_Zibei');
+      populateZibeiOptions(zsel);
+      document.getElementById('edit_member_uuid').value = get(1);
+      document.getElementById('edit_member_id').value = get(2);
+      document.getElementById('edit_name').value = get(3);
+      document.getElementById('edit_gender').value = get(4);
+      document.getElementById('edit_birth_date').value = get(5);
+      document.getElementById('edit_death_date').value = get(6);
+      document.getElementById('edit_occupation').value = get(7);
+      document.getElementById('edit_Zibei').value = get(8);
+      document.getElementById('edit_branch_char').value = get(10).toUpperCase();
+      document.getElementById('edit_father_id').value = get(12);
+      document.getElementById('edit_mother_id').value = get(13);
+      document.getElementById('edit_spouse_id').value = get(14);
+      document.getElementById('edit_child_id').value = get(15);
+      document.getElementById('edit_photo').value = get(16);
+      document.getElementById('edit_previous_names').value = get(17);
+      document.getElementById('edit_bio').value = get(18);
+    }
+    function closeMemberEditor(){
+      currentEditingRow = null;
+      document.getElementById('memberEditorOverlay').style.display = 'none';
+      const el = document.getElementById('memberEditorError'); if(el) el.textContent = '';
+    }
+    async function saveMemberFromEditor(){
+      try{
+        await MembersDB.initDB();
+        const childRaw = document.getElementById('edit_child_id').value.trim();
+        const childArr = childRaw ? childRaw.split(/[,，;；\s]+/).map(s=>s.trim()).filter(Boolean) : [];
+        const data = {
+          member_uuid: document.getElementById('edit_member_uuid').value.trim(),
+          member_id: document.getElementById('edit_member_id').value.trim(),
+          name: document.getElementById('edit_name').value.trim(),
+          gender: document.getElementById('edit_gender').value.trim(),
+          birth_date: document.getElementById('edit_birth_date').value.trim(),
+          death_date: document.getElementById('edit_death_date').value.trim(),
+          occupation: document.getElementById('edit_occupation').value.trim(),
+          Zibei: document.getElementById('edit_Zibei').value.trim(),
+          branch_char: document.getElementById('edit_branch_char').value.trim().toUpperCase(),
+          father_id: document.getElementById('edit_father_id').value.trim(),
+          mother_id: document.getElementById('edit_mother_id').value.trim(),
+          spouse_id: document.getElementById('edit_spouse_id').value.trim(),
+          child_id: childArr,
+          photo: document.getElementById('edit_photo').value.trim(),
+          previous_names: document.getElementById('edit_previous_names').value.trim(),
+          bio: document.getElementById('edit_bio').value.trim()
+        };
+        // 若 member_id 为空，生成唯一的6位数字ID（不更改已有 member_uuid）
+        if(!data.member_id){
+          data.member_id = await generateUniqueMemberId();
+          document.getElementById('edit_member_id').value = data.member_id;
+        }
+        // 性别与关系校验：父=男，母=女，配偶=与本人性别相反
+        const curGender = data.gender;
+        const getByUUID = MembersDB.getMemberByUUID;
+        if(data.father_id){ const f = await getByUUID(data.father_id); if(!f) throw new Error(`父ID不存在：${data.father_id}`); if((f.gender||'') !== '男') throw new Error('父ID必须为男性'); }
+        if(data.mother_id){ const m = await getByUUID(data.mother_id); if(!m) throw new Error(`母ID不存在：${data.mother_id}`); if((m.gender||'') !== '女') throw new Error('母ID必须为女性'); }
+        if(data.spouse_id){ const s = await getByUUID(data.spouse_id); if(!s) throw new Error(`配偶ID不存在：${data.spouse_id}`); if(curGender && s.gender && curGender === s.gender) throw new Error('配偶性别需与当前成员不一致');
+          // 女性成员字辈随丈夫
+          if(curGender === '女' && (s.Zibei||'')){
+            data.Zibei = s.Zibei;
+            const zsel = document.getElementById('edit_Zibei'); if(zsel) zsel.value = s.Zibei;
+          }
+        }
+        let saved;
+        const isNew = !data.member_uuid;
+        if(isNew){ saved = await MembersDB.addMember(data); }
+        else {
+          const { member_uuid, ...updates } = data;
+          saved = await MembersDB.updateMember(member_uuid, updates);
+        }
+        const preChanges = await computeRelationChanges(saved);
+        if(preChanges.texts.length){
+          const ok = await showConfirmChanges(preChanges.texts);
+          if(ok){ for(const op of preChanges.ops){ await op(); } }
+          else { setMembersStatus('已取消关系联动更新（本人已保存）', 'muted'); }
+        }
+        closeMemberEditor();
+        await loadMembers();
+        setMembersStatus('保存成功', 'success');
+      }catch(err){
+        console.error(err);
+        const el = document.getElementById('memberEditorError'); if(el) el.textContent = '保存失败：' + (err.message||err);
+      }
+    }
+    // Zibei 下拉选项
+    function populateZibeiOptions(sel){
+      sel.innerHTML = '';
+      const cfg = MembersDB.CONFIG || {};
+      const names = new Set();
+      (cfg.generationNames||[]).forEach(({names:n})=>{ (n||[]).forEach(x=>names.add(String(x))); });
+      // 允许空值
+      const empty = document.createElement('option'); empty.value=''; empty.textContent='（空）'; sel.appendChild(empty);
+      [...names].forEach(n=>{ const opt=document.createElement('option'); opt.value=n; opt.textContent=n; sel.appendChild(opt); });
+    }
+    // 生成唯一member_id（调用 getMemberById 校验不重复）
+    async function generateUniqueMemberId(){
+      for(let i=0;i<30;i++){
+        const mid = String(Math.floor(100000 + Math.random()*900000));
+        const exists = await MembersDB.getMemberById(mid);
+        if(!exists) return mid;
+      }
+      throw new Error('无法生成唯一的 member_id');
+    }
+    // 关系选择弹层（动态创建）
+    let relationSelectContext = { type:'', multi:false };
+    let relationSelectorBuilt = false;
+    function ensureRelationSelectorDOM(){
+      if(relationSelectorBuilt) return;
+      const div = document.createElement('div');
+      div.id = 'relationSelectorOverlay';
+      div.className = 'fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center';
+      div.style.display = 'none';
+      div.style.zIndex = '10001';
+      div.innerHTML = `
+        <div class="card shadow-sm" style="width:1000px; max-height:90vh; overflow:auto;">
+          <h3 class="text-md font-medium text-gray-700 mb-2">选择关系：<span id="relationTypeLabel"></span></h3>
+          <div class="grid grid-cols-3 gap-3">
+            <label>分支<select id="rel_branch" class="rounded border border-gray-300 p-2"></select></label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="rel_branch_only" checked> 仅当前分支</label>
+            <label>字辈<select id="rel_zibei" class="rounded border border-gray-300 p-2"></select></label>
+          </div>
+          <div class="grid grid-cols-4 gap-3 mt-2">
+            <label>世代最小<input id="rel_gen_min" type="number" class="rounded border border-gray-300 p-2" placeholder="如 1"></label>
+            <label>世代最大<input id="rel_gen_max" type="number" class="rounded border border-gray-300 p-2" placeholder="如 10"></label>
+            <label>出生年份起<input id="rel_year_min" type="number" class="rounded border border-gray-300 p-2" placeholder="如 1900"></label>
+            <label>出生年份止<input id="rel_year_max" type="number" class="rounded border border-gray-300 p-2" placeholder="如 2000"></label>
+          </div>
+          <div class="mt-2 flex gap-2">
+            <button class="btn" id="rel_quick_same_gen">同世代</button>
+            <button class="btn" id="rel_quick_adjacent_gen">相邻世代</button>
+          </div>
+          <div class="mt-2"><select id="rel_name_select" class="rounded border border-gray-300 p-2 w-full"><option value="">全部姓名</option></select></div>
+          <div class="mt-2 grid grid-cols-2 gap-3">
+             <label>姓名搜索<input id="rel_name_search" type="text" class="rounded border border-gray-300 p-2" placeholder="输入姓名关键词"></label>
+             <label>排序<select id="rel_sort" class="rounded border border-gray-300 p-2">
+               <option value="">默认</option>
+               <option value="birth_asc">按出生年↑</option>
+               <option value="birth_desc">按出生年↓</option>
+               <option value="gen_asc">按世代↑</option>
+               <option value="gen_desc">按世代↓</option>
+               <option value="name_asc">按姓名↑</option>
+               <option value="name_desc">按姓名↓</option>
+             </select></label>
+           </div>
+           <div class="mt-2"><label>仅显示前 <input id="rel_limit_n" type="number" min="1" value="50" class="rounded border border-gray-300 p-2 w-24"> 条</label></div>
+            <div class="mt-2 flex gap-2">
+              <button class="btn" id="rel_mode_select">生成下拉框</button>
+              <button class="btn" id="rel_mode_list">生成列表</button>
+            </div>
+            <div id="rel_candidates_info" class="text-sm text-gray-600 mt-1"></div>
+            <div class="mt-1 flex items-center gap-2" id="rel_selection_tools">
+              <button class="btn" id="rel_select_all_page">本页全选</button>
+              <button class="btn" id="rel_clear_selection">清空选择</button>
+              <span id="rel_selected_count" class="muted">已选 0 个</span>
+            </div>
+            <div class="mt-2" id="rel_candidates_select_wrap" style="display:none;">
+              <select id="rel_candidate_select" class="rounded border border-gray-300 p-2 w-full"></select>
+            </div>
+            <div class="mt-2 border rounded p-2" style="max-height:40vh; overflow:auto;" id="rel_candidates"></div>
+            <div class="flex justify-end gap-2 mt-3">
+              <button class="btn" id="relCancelBtn">取消</button>
+              <button class="btn bg-blue-600 text-white hover:bg-blue-700 border-blue-600" id="relConfirmBtn" disabled>确定</button>
+            </div>
+            <div id="relationSelectorError" class="error mt-2"></div>
+        </div>`;
+      document.body.appendChild(div);
+      relationSelectorBuilt = true;
+      // 事件绑定
+      document.getElementById('relCancelBtn').addEventListener('click', closeRelationSelector);
+      document.getElementById('relConfirmBtn').addEventListener('click', confirmRelationSelection);
+      document.getElementById('rel_branch').addEventListener('change', ()=>{ updateNameOptions(); updateRelationCandidates(); saveRelationFilterMemory(); });
+      document.getElementById('rel_zibei').addEventListener('change', ()=>{ updateNameOptions(); updateRelationCandidates(); saveRelationFilterMemory(); });
+      document.getElementById('rel_branch_only').addEventListener('change', ()=>{ updateNameOptions(); updateRelationCandidates(); saveRelationFilterMemory(); });
+      document.getElementById('rel_name_select').addEventListener('change', ()=>{ updateRelationCandidates(); saveRelationFilterMemory(); });
+      document.getElementById('rel_gen_min').addEventListener('input', ()=>{ updateRelationCandidates(); saveRelationFilterMemory(); });
+      document.getElementById('rel_gen_max').addEventListener('input', ()=>{ updateRelationCandidates(); saveRelationFilterMemory(); });
+      document.getElementById('rel_year_min').addEventListener('input', ()=>{ updateRelationCandidates(); saveRelationFilterMemory(); });
+      document.getElementById('rel_year_max').addEventListener('input', ()=>{ updateRelationCandidates(); saveRelationFilterMemory(); });
+      const nameSearch = document.getElementById('rel_name_search'); if(nameSearch){ nameSearch.addEventListener('input', ()=>{ updateNameOptions(); updateRelationCandidates(); saveRelationFilterMemory(); }); }
+      const sortSel = document.getElementById('rel_sort'); if(sortSel){ sortSel.addEventListener('change', ()=>{ updateRelationCandidates(); saveRelationFilterMemory(); }); }
+      const limitN = document.getElementById('rel_limit_n'); if(limitN){ limitN.addEventListener('input', ()=>{ updateRelationCandidates(); saveRelationFilterMemory(); }); }
+      const btnSame = document.getElementById('rel_quick_same_gen'); if(btnSame){ btnSame.addEventListener('click', ()=>{ try { const curZ = document.getElementById('edit_Zibei').value||''; const curGen = MembersDB?.CONFIG?.zibeiToGenerationMap?.[curZ]; if(curGen!=null){ document.getElementById('rel_gen_min').value = curGen; document.getElementById('rel_gen_max').value = curGen; updateRelationCandidates(); saveRelationFilterMemory(); } } catch(e){} }); }
+      const btnAdj = document.getElementById('rel_quick_adjacent_gen'); if(btnAdj){ btnAdj.addEventListener('click', ()=>{ try { const curZ = document.getElementById('edit_Zibei').value||''; const curGen = MembersDB?.CONFIG?.zibeiToGenerationMap?.[curZ]; if(curGen!=null){ document.getElementById('rel_gen_min').value = Math.max(1, curGen-1); document.getElementById('rel_gen_max').value = curGen+1; updateRelationCandidates(); saveRelationFilterMemory(); } } catch(e){} }); }
+      const btnModeSel = document.getElementById('rel_mode_select'); if(btnModeSel){ btnModeSel.addEventListener('click', ()=>{ relationSelectContext.viewMode = 'select'; updateRelationCandidates(); }); }
+      const btnModeList = document.getElementById('rel_mode_list'); if(btnModeList){ btnModeList.addEventListener('click', ()=>{ relationSelectContext.viewMode = 'list'; updateRelationCandidates(); }); }
+      const btnAll = document.getElementById('rel_select_all_page'); if(btnAll){ btnAll.addEventListener('click', ()=>{ const mode = relationSelectContext.viewMode||'list'; if(mode==='select'){ const selEl=document.getElementById('rel_candidate_select'); if(selEl){ Array.from(selEl.options||[]).forEach(o=>o.selected=true); } } else { document.querySelectorAll('#rel_candidates input[name="relCandidate"]').forEach(i=>{ i.checked=true; }); } updateSelectedCount(); }); }
+      const btnClear = document.getElementById('rel_clear_selection'); if(btnClear){ btnClear.addEventListener('click', ()=>{ const mode = relationSelectContext.viewMode||'list'; if(mode==='select'){ const selEl=document.getElementById('rel_candidate_select'); if(selEl){ Array.from(selEl.options||[]).forEach(o=>o.selected=false); } } else { document.querySelectorAll('#rel_candidates input[name="relCandidate"]').forEach(i=>{ i.checked=false; }); } updateSelectedCount(); }); }
+      div.addEventListener('click', (e)=>{ if(e.target && e.target.id==='relationSelectorOverlay') closeRelationSelector(); });
+      document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeRelationSelector(); });
+    }
+    function openRelationSelector(type){
+      ensureRelationSelectorDOM();
+      relationSelectContext.type = type;
+      relationSelectContext.multi = (type === 'child');
+      document.getElementById('relationTypeLabel').textContent = ({father:'父', mother:'母', spouse:'配偶', child:'子女'})[type]||'';
+      // 填充分支/字辈
+      const bsel = document.getElementById('rel_branch');
+      populateBranchSelectOptions(bsel);
+      const zsel = document.getElementById('rel_zibei');
+      populateZibeiOptions(zsel);
+      // 默认当前分支与字辈
+      const curBranch = (document.getElementById('edit_branch_char').value||'').toUpperCase();
+      const curZ = document.getElementById('edit_Zibei').value||'';
+      bsel.value = curBranch;
+      zsel.value = curZ;
+      document.getElementById('relationSelectorOverlay').style.display = 'flex';
+      const restored = restoreRelationFilterMemory(type);
+      updateNameOptions();
+      if(restored){
+        const mem = relationFilterMemory[type];
+        const nameSel = document.getElementById('rel_name_select');
+        if(nameSel && mem && mem.selName){ nameSel.value = mem.selName; }
+      }
+      updateRelationCandidates();
+    }
+    function closeRelationSelector(){
+      const err = document.getElementById('relationSelectorError'); if(err) err.textContent='';
+      saveRelationFilterMemory();
+      const ov = document.getElementById('relationSelectorOverlay'); if(ov) ov.style.display='none';
+    }
+    const relationFilterMemory = {};
+    function saveRelationFilterMemory(){
+      try{
+        const type = relationSelectContext.type; if(!type) return;
+        relationFilterMemory[type] = {
+          branch: document.getElementById('rel_branch')?.value||'',
+          onlyCur: !!document.getElementById('rel_branch_only')?.checked,
+          zibei: document.getElementById('rel_zibei')?.value||'',
+          selName: document.getElementById('rel_name_select')?.value||'',
+          nameLike: document.getElementById('rel_name_search')?.value||'',
+          genMin: document.getElementById('rel_gen_min')?.value||'',
+          genMax: document.getElementById('rel_gen_max')?.value||'',
+          yearMin: document.getElementById('rel_year_min')?.value||'',
+          yearMax: document.getElementById('rel_year_max')?.value||'',
+          sort: document.getElementById('rel_sort')?.value||'',
+          limit: document.getElementById('rel_limit_n')?.value||''
+        };
+      }catch(e){ console.warn('保存筛选状态失败', e); }
+    }
+    function restoreRelationFilterMemory(type){
+      const mem = relationFilterMemory[type]; if(!mem) return false;
+      try{
+        const bsel = document.getElementById('rel_branch'); if(bsel && mem.branch) bsel.value = mem.branch;
+        const only = document.getElementById('rel_branch_only'); if(only) only.checked = !!mem.onlyCur;
+        const zsel = document.getElementById('rel_zibei'); if(zsel && mem.zibei) zsel.value = mem.zibei;
+        const ns = document.getElementById('rel_name_search'); if(ns) ns.value = mem.nameLike||'';
+        const gmin = document.getElementById('rel_gen_min'); if(gmin) gmin.value = mem.genMin||'';
+        const gmax = document.getElementById('rel_gen_max'); if(gmax) gmax.value = mem.genMax||'';
+        const ymin = document.getElementById('rel_year_min'); if(ymin) ymin.value = mem.yearMin||'';
+        const ymax = document.getElementById('rel_year_max'); if(ymax) ymax.value = mem.yearMax||'';
+        const sortSel = document.getElementById('rel_sort'); if(sortSel) sortSel.value = mem.sort||'';
+        const limitN = document.getElementById('rel_limit_n'); if(limitN) limitN.value = mem.limit||'';
+      }catch(e){ console.warn('恢复筛选状态失败', e); }
+      return true;
+    }
+    function updateNameOptions(){
+      const bsel = document.getElementById('rel_branch');
+      const zsel = document.getElementById('rel_zibei');
+      const onlyCur = !!document.getElementById('rel_branch_only').checked;
+      const curBranch = (document.getElementById('edit_branch_char').value||'').toUpperCase();
+      const branch = onlyCur ? curBranch : (bsel.value||'');
+      const type = relationSelectContext.type;
+      const list = (membersListCache||[]).filter(m=>{
+        if(branch && (String(m.branch_char||'').toUpperCase() !== branch)) return false;
+        const zi = m.Zibei || m.zibei || m.zi || '';
+        if(zsel.value && zi !== zsel.value) return false;
+        if(type==='father' && (m.gender||'') !== '男') return false;
+        if(type==='mother' && (m.gender||'') !== '女') return false;
+        if(type==='spouse'){
+          const curGender = (document.getElementById('edit_gender').value||'');
+          if(curGender && (m.gender||'') === curGender) return false;
+        }
+        return true;
+      });
+      const nameSel = document.getElementById('rel_name_select');
+      if(!nameSel) return;
+      const keyword = (document.getElementById('rel_name_search')?.value||'').trim();
+      let names = Array.from(new Set(list.map(m=>m.name).filter(Boolean))).sort((a,b)=>String(a).localeCompare(String(b)));
+      if(keyword) names = names.filter(n=> String(n).includes(keyword));
+      const curVal = nameSel.value;
+      nameSel.innerHTML = '<option value="">全部姓名</option>' + names.map(n=>`<option value="${n}">${n}</option>`).join('');
+      if(names.includes(curVal)) nameSel.value = curVal; else nameSel.value = '';
+    }
+    function updateSelectedCount(){
+      try{
+        const mode = relationSelectContext.viewMode || 'list';
+        let count = 0;
+        if(mode==='select'){
+          const selEl = document.getElementById('rel_candidate_select');
+          count = selEl ? Array.from(selEl.selectedOptions||[]).length : 0;
+        } else {
+          count = document.querySelectorAll('#rel_candidates input[name="relCandidate"]:checked').length;
+        }
+        const cntEl = document.getElementById('rel_selected_count'); if(cntEl) cntEl.textContent = `已选 ${count} 个`;
+        const confirmBtn = document.getElementById('relConfirmBtn'); if(confirmBtn) confirmBtn.disabled = (count===0);
+      }catch(e){}
+    }
+    function updateRelationCandidates(){
+      const bsel = document.getElementById('rel_branch');
+      const zsel = document.getElementById('rel_zibei');
+      const selName = (document.getElementById('rel_name_select').value||'').trim();
+      const nameLike = (document.getElementById('rel_name_search')?.value||'').trim();
+      const onlyCur = !!document.getElementById('rel_branch_only').checked;
+      const curBranch = (document.getElementById('edit_branch_char').value||'').toUpperCase();
+      const curGender = (document.getElementById('edit_gender').value||'');
+      const meUUID = (document.getElementById('edit_member_uuid').value||'');
+      const genMinRaw = document.getElementById('rel_gen_min').value; const genMaxRaw = document.getElementById('rel_gen_max').value;
+      const yearMinRaw = document.getElementById('rel_year_min').value; const yearMaxRaw = document.getElementById('rel_year_max').value;
+      const genMin = genMinRaw ? parseInt(genMinRaw,10) : null; const genMax = genMaxRaw ? parseInt(genMaxRaw,10) : null;
+      const yearMin = yearMinRaw ? parseInt(yearMinRaw,10) : null; const yearMax = yearMaxRaw ? parseInt(yearMaxRaw,10) : null;
+      const branch = onlyCur ? curBranch : (bsel.value||'');
+      const type = relationSelectContext.type;
+      let list = (membersListCache||[]).filter(m=>{
+        if(meUUID && m.member_uuid === meUUID) return false;
+        if(branch && (String(m.branch_char||'').toUpperCase() !== branch)) return false;
+        const zi = m.Zibei || m.zibei || m.zi || '';
+        if(zsel.value && zi !== zsel.value) return false;
+        if(selName && (m.name||'') !== selName) return false;
+        if(!selName && nameLike && !(m.name||'').includes(nameLike)) return false;
+        if(type==='father' && (m.gender||'') !== '男') return false;
+        if(type==='mother' && (m.gender||'') !== '女') return false;
+        if(type==='spouse' && curGender && (m.gender||'') === curGender) return false;
+        const gen = (m.generation!=null)? m.generation : null;
+        if(genMin!=null && gen!=null && gen < genMin) return false;
+        if(genMax!=null && gen!=null && gen > genMax) return false;
+        const byStr = (m.birth_date||'').slice(0,4); const by = byStr? parseInt(byStr,10) : null;
+        if(yearMin!=null && by!=null && by < yearMin) return false;
+        if(yearMax!=null && by!=null && by > yearMax) return false;
+        return true;
+      });
+      // 排序
+      const sortVal = (document.getElementById('rel_sort')?.value||'');
+      const cmp = (a,b)=>{
+        const byA = (a.birth_date||'').slice(0,4); const byB = (b.birth_date||'').slice(0,4);
+        const numA = byA? parseInt(byA,10): null; const numB = byB? parseInt(byB,10): null;
+        const genA = (a.generation!=null)? parseInt(a.generation,10): null; const genB = (b.generation!=null)? parseInt(b.generation,10): null;
+        const nameA = String(a.name||''); const nameB = String(b.name||'');
+        switch(sortVal){
+          case 'birth_asc': return (numA??Infinity) - (numB??Infinity);
+          case 'birth_desc': return (numB??-Infinity) - (numA??-Infinity);
+          case 'gen_asc': return (genA??Infinity) - (genB??Infinity);
+          case 'gen_desc': return (genB??-Infinity) - (genA??-Infinity);
+          case 'name_asc': return nameA.localeCompare(nameB, 'zh-Hans-CN');
+          case 'name_desc': return nameB.localeCompare(nameA, 'zh-Hans-CN');
+          default: return 0;
+        }
+      };
+      // 配偶选择：跨分支时优先同分支候选
+      if(type==='spouse' && !onlyCur){
+        const same = x => String(x.branch_char||'').toUpperCase() === curBranch ? 1 : 0;
+        list.sort((a,b)=> (same(b)-same(a)) || cmp(a,b) );
+      } else if(sortVal){ list.sort(cmp); }
+      // 限制显示条数并更新信息
+      const limitRaw = document.getElementById('rel_limit_n')?.value; const limit = limitRaw ? parseInt(limitRaw,10) : 50;
+      const info = document.getElementById('rel_candidates_info'); if(info){ info.textContent = `候选共 ${list.length} 条，显示前 ${limit} 条`; }
+      const box = document.getElementById('rel_candidates');
+      box.innerHTML = '';
+      const curFather = document.getElementById('edit_father_id').value||'';
+      const renderList = Array.isArray(list) ? list.slice(0, Math.max(1, limit||50)) : [];
+      // 视图模式：下拉或列表
+      const mode = relationSelectContext.viewMode || 'list';
+      const selWrap = document.getElementById('rel_candidates_select_wrap');
+      const selEl = document.getElementById('rel_candidate_select');
+      if(selWrap && selEl){
+        if(mode==='select'){
+          selWrap.style.display = 'block';
+          box.style.display = 'none';
+          selEl.multiple = !!relationSelectContext.multi;
+          selEl.innerHTML = renderList.map(m=>{
+            const gender = m.gender||m.sex||'';
+            const branchChar = String(m.branch_char||'').toUpperCase();
+            const zi = m.Zibei||m.zibei||m.zi||'';
+            const gen = (m.generation!=null)? m.generation : '';
+            const by = (m.birth_date||'').slice(0,4); const dy = (m.death_date||'').slice(0,4);
+            const years = by || dy ? `${by||''}${dy?('-'+dy):''}` : '';
+            const label = `[${branchChar}] ${m.name||m.member_uuid} (${gender}) | 字:${zi} | 世代:${gen}${years?(' | 年:'+years):''}`;
+            return `<option value="${m.member_uuid}">${label}</option>`;
+          }).join('');
+        } else {
+          selWrap.style.display = 'none';
+          box.style.display = 'block';
+        }
+      }
+
+      const curMother = document.getElementById('edit_mother_id').value||'';
+      const curSpouse = document.getElementById('edit_spouse_id').value||'';
+      const curChildrenSet = new Set((document.getElementById('edit_child_id').value||'').split(/[,，;；\s]+/).filter(Boolean));
+      renderList.forEach(m=>{
+        const wrap = document.createElement('div');
+        wrap.className = 'flex items-center justify-between p-1 hover:bg-gray-50';
+        const lab = document.createElement('label'); lab.className='flex items-center gap-2';
+        const inp = document.createElement('input'); inp.type = relationSelectContext.multi ? 'checkbox' : 'radio'; inp.name='relCandidate'; inp.value=m.member_uuid;
+        // 预选与高亮
+        if(!relationSelectContext.multi){
+          if((type==='father' && m.member_uuid===curFather) || (type==='mother' && m.member_uuid===curMother) || (type==='spouse' && m.member_uuid===curSpouse)){
+            inp.checked = true; wrap.style.backgroundColor = '#f0f9ff';
+          }
+        }else{
+          if(curChildrenSet.has(m.member_uuid)){ inp.checked = true; wrap.style.backgroundColor = '#f0f9ff'; }
+        }
+        const nm = document.createElement('span'); nm.textContent = m.name||m.member_uuid;
+        const by = (m.birth_date||'').slice(0,4); const dy = (m.death_date||'').slice(0,4);
+        const meta = document.createElement('span'); meta.className='muted'; meta.textContent = `${m.gender||''} / ${(m.branch_char||'').toUpperCase()} / ${(m.Zibei||m.zi||'')} / ${(m.generation!=null?m.generation+'代':'' )} / ${(by||'')}${dy?('-'+dy):''}`;
+        lab.appendChild(inp); lab.appendChild(nm);
+        wrap.appendChild(lab); wrap.appendChild(meta);
+        box.appendChild(wrap);
+        inp.addEventListener('change', updateSelectedCount);
+      });
+      updateSelectedCount();
+    }
+    async function confirmRelationSelection(){
+      let sel = Array.from(document.querySelectorAll('#rel_candidates input[name="relCandidate"]'))
+        .filter(i=>i.checked).map(i=>i.value);
+      const mode = relationSelectContext.viewMode || 'list';
+      if(mode==='select'){
+        const selEl = document.getElementById('rel_candidate_select');
+        if(selEl){ sel = Array.from(selEl.selectedOptions||[]).map(o=>o.value); }
+      }
+      const type = relationSelectContext.type;
+      if(!sel.length){ const err=document.getElementById('relationSelectorError'); if(err) err.textContent='请先选择候选项'; return; }
+      if(type==='father') document.getElementById('edit_father_id').value = sel[0];
+      else if(type==='mother') document.getElementById('edit_mother_id').value = sel[0];
+      else if(type==='spouse'){
+        document.getElementById('edit_spouse_id').value = sel[0];
+        // 若为女性，字辈随选中的丈夫
+        const spouse = (membersListCache||[]).find(m => m.member_uuid === sel[0]);
+        if(spouse && (document.getElementById('edit_gender').value||'') === '女'){
+          const zi = spouse.Zibei || spouse.zi || spouse.zibei || '';
+          document.getElementById('edit_Zibei').value = zi;
+        }
+      }
+      else if(type==='child'){
+        const cur = (document.getElementById('edit_child_id').value||'').split(/[,，;；\s]+/).filter(Boolean);
+        const combined = Array.from(new Set([...cur, ...sel]));
+        const err = document.getElementById('relationSelectorError');
+        if(err) err.textContent = (combined.length < (cur.length + sel.length)) ? '重复选择已自动去重' : '';
+        document.getElementById('edit_child_id').value = combined.join(',');
+      }
+      closeRelationSelector();
+    }
+    // 在统一 click 处理里追加按钮支持
+    document.addEventListener('click', async (e)=>{
+      const t = e.target;
+      if(t && t.id === 'memberEditorCancelBtn') closeMemberEditor();
+      if(t && t.id === 'memberEditorSaveBtn') await saveMemberFromEditor();
+      if(t && t.id === 'selectFatherBtn') openRelationSelector('father');
+      if(t && t.id === 'selectMotherBtn') openRelationSelector('mother');
+      if(t && t.id === 'selectSpouseBtn') openRelationSelector('spouse');
+      if(t && t.id === 'selectChildrenBtn') openRelationSelector('child');
+    });
+
+    // 增强：支持导出为 FamilyDB.js，并允许从 FamilyDB.js 导入全库
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        (async function(){
+          try{
+            const importAllEl = document.getElementById('importAllFile');
+            if(importAllEl){ importAllEl.setAttribute('accept', '.json,.js,application/json,text/javascript'); }
+            const exportAllBtn = document.getElementById('exportAllBtn');
+            if(exportAllBtn && !document.getElementById('exportFamilyJSBtn')){
+              const btn = document.createElement('button');
+              btn.className = 'btn';
+              btn.id = 'exportFamilyJSBtn';
+              btn.innerHTML = '<i class="fa fa-code mr-1"></i> 导出为 FamilyDB.js';
+              exportAllBtn.parentNode.insertBefore(btn, exportAllBtn.nextSibling);
+            }
+
+            await MembersDB.initDB();
+            const persisted = await MembersDB.getFamilyMgmt();
+            if(persisted && (persisted.family || persisted.management)){
+              window.FamilyMgmtDraft = { family: persisted.family || {}, management: persisted.management || {} };
+              renderFamilyMgmt(window.FamilyMgmtDraft);
+            } else {
+              if(typeof window.FamilyDBConfig === 'undefined'){
+                const s = document.createElement('script'); s.src = '../Data/FamilyDB.js'; s.defer = true; s.onload = function(){ try{ renderFamilyMgmt(getFamilyAndManagement()); }catch(e){} }; document.head.appendChild(s);
+              }
+              try{ renderFamilyMgmt(getFamilyAndManagement()); }catch(e){}
+            }
+          }catch(e){ console.warn('初始化增强失败：', e); }
+        })();
+      });
+
+      function getFamilyAndManagement(){
+        const defFamily = { surname:'张', origin:'中国', foundingYear:'未知', description:'张家族谱系统，记录家族成员信息和血缘关系' };
+        const defManagement = { status:'enable', description:'', positions:[], publicContact:{}, updated_at: new Date().toISOString() };
+        const draft = window.FamilyMgmtDraft;
+        const fcfg = window.FamilyDBConfig;
+        const family = (draft && draft.family) ? draft.family : (fcfg && fcfg.family ? fcfg.family : defFamily);
+        const management = (draft && draft.management) ? draft.management : (fcfg && fcfg.management ? fcfg.management : defManagement);
+        return { family, management };
+      }
+
+      function renderFamilyMgmt(obj){
+        try{
+          const family = (obj && obj.family) || {};
+          const mgmt = (obj && obj.management) || {};
+          const setVal = (id, val) => { const el = document.getElementById(id); if(el){ if(el.tagName === 'SELECT'){ el.value = val||''; } else if(el.tagName === 'TEXTAREA'){ el.value = val||''; } else { el.value = val||''; } } };
+          setVal('family_surname', family.surname||'');
+          setVal('family_origin', family.origin||'');
+          setVal('family_foundingYear', family.foundingYear||'');
+          setVal('family_description', family.description||'');
+          setVal('management_status', mgmt.status||'enable');
+          setVal('management_description', mgmt.description||'');
+          const c = mgmt.publicContact||{};
+          setVal('management_contact_wechat', c.wechat||'');
+          setVal('management_contact_email', c.email||'');
+          // 渲染职位列表
+          renderPositionsTable(Array.isArray(mgmt.positions) ? mgmt.positions : []);
+        }catch(e){ console.warn('渲染家族/管理信息失败：', e); }
+      }
+
+      // 职位列表渲染与采集（方案A）
+      function renderPositionsTable(positions){
+        const tbody = document.querySelector('#positionsTable tbody');
+        if(!tbody) return;
+        tbody.innerHTML = '';
+        const list = Array.isArray(positions) ? positions : [];
+        if(list.length === 0){
+          addPositionRow({ title:'', name:'', contact:'', note:'' });
+          return;
+        }
+        list.forEach(p => addPositionRow(p));
+      }
+      function addPositionRow(p){
+        const tbody = document.querySelector('#positionsTable tbody');
+        if(!tbody) return;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input type="text" class="rounded border border-gray-300 p-1 w-full" placeholder="例如：族长/副族长" value="${escapeHTML(p && p.title || '')}"></td>
+          <td><input type="text" class="rounded border border-gray-300 p-1 w-full" placeholder="负责人姓名" value="${escapeHTML(p && p.name || '')}"></td>
+          <td><input type="text" class="rounded border border-gray-300 p-1 w-full" placeholder="电话/微信/邮箱" value="${escapeHTML(p && p.contact || '')}"></td>
+          <td><input type="text" class="rounded border border-gray-300 p-1 w-full" placeholder="备注" value="${escapeHTML(p && p.note || '')}"></td>
+          <td><button type="button" class="btn bg-red-600 text-white hover:bg-red-700 border-red-600 positionDeleteBtn"><i class="fa fa-trash mr-1"></i> 删除</button></td>
+        `;
+        tbody.appendChild(tr);
+        const delBtn = tr.querySelector('.positionDeleteBtn');
+        if(delBtn){ delBtn.addEventListener('click', ()=>{ tr.remove(); }); }
+      }
+      function getPositionsFromTable(){
+        const tbody = document.querySelector('#positionsTable tbody');
+        const rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
+        const list = [];
+        rows.forEach(tr => {
+          const inputs = tr.querySelectorAll('input');
+          if(!inputs || inputs.length < 4) return;
+          const [titleEl, nameEl, contactEl, noteEl] = inputs;
+          const title = titleEl.value.trim();
+          const name = nameEl.value.trim();
+          const contact = contactEl.value.trim();
+          const note = noteEl.value.trim();
+          if(title === '' && name === '' && contact === '' && note === '') return;
+          list.push({ title, name, contact, note });
+        });
+        return list;
+      }
+      // 简单的HTML转义以避免插入值引起的HTML破坏
+      function escapeHTML(s){
+        return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      }
+
+      // 绑定添加职位按钮
+      document.addEventListener('click', function(e){
+        const t = e.target;
+        if(!t) return;
+        if(t.id === 'addPositionBtn'){
+          addPositionRow({ title:'', name:'', contact:'', note:'' });
+        }
+      });
+
+      function collectFamilyMgmt(){
+        const family = {
+          surname: (document.getElementById('family_surname')||{}).value || '',
+          origin: (document.getElementById('family_origin')||{}).value || '',
+          foundingYear: (document.getElementById('family_foundingYear')||{}).value || '',
+          description: (document.getElementById('family_description')||{}).value || ''
+        };
+        const management = {
+          status: (document.getElementById('management_status')||{}).value || 'enable',
+          description: (document.getElementById('management_description')||{}).value || '',
+          positions: getPositionsFromTable(),
+          publicContact: {
+            wechat: (document.getElementById('management_contact_wechat')||{}).value || '',
+            email: (document.getElementById('management_contact_email')||{}).value || ''
+          },
+          updated_at: new Date().toISOString()
+        };
+        return { family, management };
+      }
+
+      async function saveFamilyMgmt(){
+        try{
+          const obj = collectFamilyMgmt();
+          window.FamilyMgmtDraft = obj;
+          renderFamilyMgmt(obj);
+          await MembersDB.initDB();
+          await MembersDB.setFamilyMgmt(obj);
+          const el = document.getElementById('familyMgmtStatus');
+          if(el){ el.textContent = '已保存至数据库（用于导出 FamilyDB.js）'; el.className = 'muted'; setTimeout(()=>{ el.textContent = ''; }, 2000); }
+          setStatus && typeof setStatus === 'function' && setStatus('已保存家族/管理信息到 IndexedDB', 'success');
+        }catch(e){ console.error(e); setStatus && typeof setStatus === 'function' && setStatus('保存家族/管理信息失败：' + (e.message||e), 'error'); }
+      }
+
+      async function exportFilteredFamilyJS(){
+        try{
+          setStatus('正在生成过滤 FamilyDB.js …');
+          await MembersDB.initDB();
+          const cfg = await MembersDB.getConfig();
+          const members = Array.isArray(window.membersListCache) ? window.membersListCache : [];
+          const js = buildFamilyDBJS(cfg, members);
+          const out = document.getElementById('membersExportOutput'); if(out) out.value = js;
+          const blob = new Blob([js], { type: 'text/javascript' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = 'FamilyDB.filtered.js'; a.click();
+          setStatus('已导出过滤为 FamilyDB.js', 'success');
+          setTimeout(()=>URL.revokeObjectURL(url), 1000);
+        }catch(err){ console.error(err); setStatus('导出过滤为 FamilyDB.js 失败：' + (err.message||err), 'error'); }
+      }
+
+      function buildFamilyDBJS(config, members){
+        const { family, management } = getFamilyAndManagement();
+        const payload = {
+          family,
+          management,
+          config: {
+            name: 'default',
+            branches: (config && Array.isArray(config.branches)) ? config.branches : (MembersDB.CONFIG.branches||[]),
+            generationNames: (config && Array.isArray(config.generationNames)) ? config.generationNames : (MembersDB.CONFIG.generationNames||[]),
+            updated_at: new Date().toISOString()
+          },
+          members: Array.isArray(members) ? members : []
+        };
+        return 'window.FamilyDBConfig = ' + JSON.stringify(payload, null, 2) + ' ;\n';
+      }
+
+      async function exportFamilyJS(){
+        try{
+          setStatus('正在生成 FamilyDB.js …');
+          await MembersDB.initDB();
+          const cfg = await MembersDB.getConfig();
+          const members = await MembersDB.queryMembers();
+          const js = buildFamilyDBJS(cfg, members);
+          const out = document.getElementById('exportOutput'); if(out) out.value = js;
+          const blob = new Blob([js], { type: 'text/javascript' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = 'FamilyDB.js'; a.click();
+          setStatus('已导出为 FamilyDB.js', 'success');
+          setTimeout(()=>URL.revokeObjectURL(url), 1000);
+        }catch(err){ console.error(err); setStatus('导出 FamilyDB.js 失败：' + (err.message||err), 'error'); }
+      }
+
+      function parseFamilyDBJS(text){
+        try{
+          const fn = new Function('window', text + '\nreturn window.FamilyDBConfig;');
+          const sandbox = {};
+          const obj = fn(sandbox);
+          if(obj && typeof obj === 'object') return obj;
+        }catch(e){ /* ignore */ }
+        try{
+          const m = text.match(/window\\.FamilyDBConfig\\s*=\\s*(\{[\s\S]*\});?/);
+          if(m){ return JSON.parse(m[1]); }
+        }catch(e){ /* ignore */ }
+        throw new Error('无法解析 FamilyDB.js 文件');
+      }
+
+      async function importAllFromJS(file){
+        if(!file) return;
+        setStatus('从 FamilyDB.js 导入中…');
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try{
+            const text = e.target.result;
+            const obj = parseFamilyDBJS(text);
+            const members = Array.isArray(obj && obj.members) ? obj.members : null;
+            const cfg = obj && obj.config ? obj.config : null;
+            const fm = { family: (obj && obj.family) || {}, management: (obj && obj.management) || {} };
+            await MembersDB.initDB();
+            if(cfg) await MembersDB.importConfig(cfg);
+            if(members){
+              const res = await MembersDB.importMembers(members, { overwrite: true });
+              if(res.fail && res.fail > 0){ setStatus(`导入完成：成功 ${res.ok}，失败 ${res.fail}`, 'error'); }
+            }
+            // 导入 family/management 到 IndexedDB，并渲染到页面
+            if(fm && (fm.family || fm.management)){
+              await MembersDB.importFamilyMgmt(fm);
+              window.FamilyMgmtDraft = fm;
+              renderFamilyMgmt(fm);
+            }
+            setStatus('已从 FamilyDB.js 导入', 'success');
+            await loadConfig();
+            await loadMembers();
+          }catch(err){ console.error(err); setStatus('导入 FamilyDB.js 失败：' + (err.message||err), 'error'); }
+        };
+        reader.readAsText(file, 'utf-8');
+      }
+
+      document.addEventListener('click', function(e){ const t = e.target; if(!t) return; if(t.id === 'exportFamilyJSBtn') exportFamilyJS(); if(t.id === 'saveFamilyMgmtBtn') saveFamilyMgmt(); });
+      (function(){
+        const orig = window.importAllFromFile;
+        window.importAllFromFile = function(file){ if(file && /\.js$/i.test(file.name)) return importAllFromJS(file); return orig(file); };
+      })();
+    })();
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

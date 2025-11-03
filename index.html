@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>家族展示 | Family Tree</title>
+  <link rel="preload" href="fonts/fontawesome-webfont.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="lib/font-awesome.min.css" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="lib/tailwindcss.min.js"></script>
+</head>
+<body>
+  <header class="site-header sticky top-0 bg-white border-b border-gray-200 z-10">
+    <div class="container header-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+      <h1 class="site-title m-0 py-3 text-xl">家谱树 Family Tree</h1>
+      <nav class="site-nav flex flex-wrap gap-2">
+        <a href="#family-info" class="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100"><i class="fa fa-info-circle"></i><span>基本信息</span></a>
+        <a href="#members" class="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100"><i class="fa fa-users"></i><span>家族成员</span></a>
+        <a href="#tree" class="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100"><i class="fa fa-sitemap"></i><span>家族世系树</span></a>
+        <a href="#stories" class="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100"><i class="fa fa-book"></i><span>家族故事</span></a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- 家族基本信息 -->
+    <section id="family-info" class="section py-6 border-b border-dashed border-gray-200">
+      <h2 class="section-title text-2xl font-semibold text-gray-900 inline-flex items-center gap-2"><i class="fa fa-info-circle text-blue-500"></i> 家族基本信息</h2>
+      <div id="familyInfoBlock" class="info-grid grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3"></div>
+      <!-- 管理团队模块：位于家族分支模块上方 -->
+      <div id="managementSection" class="subsection">
+        <h3 class="sub-title inline-flex items-center gap-2"><i class="fa fa-users text-gray-500"></i> 家族管理团队</h3>
+        <div id="managementBlock" class="management-list mt-2"></div>
+      </div>
+      <div class="subsection">
+        <h3 class="sub-title inline-flex items-center gap-2"><i class="fa fa-code-fork text-gray-500"></i> 家族分支</h3>
+        <div id="branchesBlock" class="branches-list mt-2"></div>
+      </div>
+      <div class="subsection">
+        <h3 class="sub-title inline-flex items-center gap-2"><i class="fa fa-sort-numeric-asc text-gray-500"></i> 字辈（世系）</h3>
+        <div id="generationBlock" class="generation-list mt-2"></div>
+      </div>
+    </section>
+
+    <!-- 家族成员（按需渲染：表格优先，卡片可选） -->
+    <section id="members" class="section py-6 border-b border-dashed border-gray-200">
+    <div class="section-title-row sticky-top border-b border-gray-200 pb-2">
+      <h2 class="section-title">家族成员</h2>
+      <div class="filters w-full md:w-auto flex flex-wrap gap-2">
+        <input type="text" id="searchInput" class="rounded border-gray-300 px-3 py-2" placeholder="搜索姓名/字辈/生卒信息..." />
+        <select id="branchSelect" class="rounded border-gray-300 px-3 py-2">
+          <option value="">全部分支</option>
+        </select>
+        <select id="generationSelect" class="rounded border-gray-300 px-3 py-2">
+          <option value="">全部世系</option>
+        </select>
+        <div id="viewModeToggle" class="inline-flex items-center gap-0.5 border border-gray-300 rounded overflow-hidden">
+           <button id="viewModeBtnTable" class="px-3 py-2 text-gray-700">表格模式</button>
+           <button id="viewModeBtnCard" class="px-3 py-2 bg-gray-100 text-gray-700">卡片模式</button>
+         </div>
+         <button id="exportCsvBtn" class="btn inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100"><i class="fa fa-download"></i> 导出CSV</button>
+         <button id="resetFilters" class="btn inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100"><i class="fa fa-times"></i> 重置</button>
+      </div>
+    </div>
+    <!-- 表格容器：首次点击“家族成员”时渲染 -->
+    <div id="membersTableWrapper" class="overflow-auto max-h-[60vh] mt-3 border rounded hidden">
+      <table id="membersTable" class="min-w-full text-sm table-auto border-collapse w-full table-sticky">
+        <thead>
+            <tr>
+               <th data-sort-key="name" class="px-3 py-2 text-left cursor-pointer"><span class="label">姓名</span><i class="sort-icon fa fa-sort text-gray-400 ml-1" aria-hidden="true"></i></th>
+               <th data-sort-key="gender" class="px-3 py-2 text-left cursor-pointer"><span class="label">性别</span><i class="sort-icon fa fa-sort text-gray-400 ml-1" aria-hidden="true"></i></th>
+               <th data-sort-key="zi" class="px-3 py-2 text-left cursor-pointer"><span class="label">字辈</span><i class="sort-icon fa fa-sort text-gray-400 ml-1" aria-hidden="true"></i></th>
+               <th data-sort-key="generation" class="px-3 py-2 text-left cursor-pointer"><span class="label">世系</span><i class="sort-icon fa fa-sort text-gray-400 ml-1" aria-hidden="true"></i></th>
+               <th data-sort-key="branch_char" class="px-3 py-2 text-left cursor-pointer"><span class="label">分支</span><i class="sort-icon fa fa-sort text-gray-400 ml-1" aria-hidden="true"></i></th>
+               <th data-sort-key="birth_date" class="px-3 py-2 text-left cursor-pointer"><span class="label">生卒</span><i class="sort-icon fa fa-sort text-gray-400 ml-1" aria-hidden="true"></i></th>
+               <th data-sort-key="occupation" class="px-3 py-2 text-left cursor-pointer"><span class="label">职业</span><i class="sort-icon fa fa-sort text-gray-400 ml-1" aria-hidden="true"></i></th>
+             </tr>
+          </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <!-- 原卡片容器（默认隐藏，保留以便切换展示或回退） -->
+    <div id="membersGrid" class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3 mt-3"></div>
+  </section>
+
+    <!-- 家族世系树（宝塔形状） -->
+    <section id="tree" class="section py-6 border-b border-dashed border-gray-200">
+      <h2 class="section-title text-2xl font-semibold text-gray-900 inline-flex items-center gap-2"><i class="fa fa-tree text-green-500"></i> 家族世系树</h2>
+      <div class="flex items-center gap-2 mb-2">
+        <p class="muted flex-1">按照世系分层居中展示，顶部为高祖，底部为后代。线条连接父子关系。</p>
+        <!-- 视图切换按钮 -->
+        <div class="flex gap-1">
+          <button id="bftViewModeBtn" data-mode="bft" class="view-mode-btn bg-gray-100" title="宝塔视图（Balkan FamilyTreeJS）">
+            <i class="fa fa-sitemap"></i> 宝塔图
+          </button>
+          <button id="rowsViewModeBtn" data-mode="rows" class="view-mode-btn" title="世代行视图（同世代同行、出生排序）">
+            <i class="fa fa-list-ul"></i> 世代行
+          </button>
+        </div>
+      </div>
+      <div id="bftContainer" class="relative bg-white border border-gray-200 rounded-xl mt-3 p-2 w-full h-[72vh] md:h-[82vh] overflow-hidden"></div>
+      <!-- 新增：按世代行布局的树容器（用于满足同世代同行、出生排序、夫妻男左女右等规则） -->
+      <div id="treeContainer" class="relative bg-white border border-gray-200 rounded-xl mt-3 p-2 w-full min-h-[72vh] md:min-h-[82vh] overflow-auto hidden">
+        <!-- 世代行视图过滤/收起工具条（仅在“世代行”模式显示；置于容器内部，随内容滚动，sticky 顶部） -->
+        <div id="rowsFiltersBar" class="sticky top-0 z-10 flex items-center gap-2 px-2 py-1 bg-white/95 backdrop-blur border-b border-gray-200 hidden" title="仅在世代行视图生效">
+          <span class="text-xs text-gray-500">分支过滤：</span>
+          <div id="rowsBranchFilters" class="flex flex-wrap gap-1"></div>
+          <button id="rowsShowAllBtn" class="px-2 py-1 text-xs rounded border border-gray-200" title="显示全部分支">全部</button>
+          <button id="rowsCollapseAllBtn" class="px-2 py-1 text-xs rounded border border-gray-200" title="收起所有世代行">收起全部</button>
+          <button id="rowsExpandAllBtn" class="px-2 py-1 text-xs rounded border border-gray-200" title="展开所有世代行">展开全部</button>
+        </div>
+        <!-- 父子/母子连接线层：SVG 绝对定位覆盖在容器上方 -->
+        <svg id="treeLines" class="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none"></svg>
+        <!-- 节点层：每一世代一行（flex），成员卡片水平排列 -->
+        <div id="treeRows" class="relative"></div>
+      </div>
+      <button id="backToTop" class="inline-flex items-center justify-center rounded-full bg-blue-500 text-white w-10 h-10 shadow-md fixed right-5 bottom-5 z-50" aria-label="返回顶部" style="display:none;">
+    <i class="fa fa-arrow-up"></i>
+  </button>
+    </section>
+
+    <!-- 家族故事（预留） -->
+    <section id="stories" class="section py-6 border-b border-dashed border-gray-200">
+      <h2 class="section-title text-2xl font-semibold text-gray-900 inline-flex items-center gap-2"><i class="fa fa-book text-purple-500"></i> 家族故事</h2>
+      <div id="hexoMount" class="mt-3"></div><!-- Hexo stories iframe is injected by js/app.js (renderStories) -->
+    </section>
+  </main>
+
+  <div id="detailModal" class="modal hidden fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="memberDetailTitle">
+    <div class="modal-backdrop absolute inset-0 bg-black/50"></div>
+    <div class="modal-content relative mx-auto w-full max-w-2xl bg-white border border-gray-200 rounded-xl p-4 shadow-lg">
+      <button id="modalClose" class="modal-close absolute top-2 right-3 text-gray-500 hover:text-gray-700" aria-label="关闭"><i class="fa fa-times"></i></button>
+      <div id="detailContent"></div>
+    </div>
+  </div>
+
+  <footer class="site-footer py-4 text-center text-gray-500">
+    <div class="container">
+      <p class="text-sm">
+        <span id="updateTime" class="text-gray-500"></span>
+        <span class="mx-2">•</span>
+        <span class="text-gray-500">GitHub Pages 静态站点</span>
+      </p>
+    </div>
+  </footer>
+
+  <!-- 数据源：全局变量 FamilyDBConfig -->
+  <script src="Data/FamilyDB.js"></script>
+  <!-- 家族世系树库：Balkan FamilyTreeJS -->
+  <script src="lib/familytree.js"></script>
+  <!-- 渲染逻辑 -->
+  <script src="js/app.js?v=__BFT_CACHE_BUST_3"></script>
+</body>
+</html>
